@@ -3,24 +3,28 @@ package httpdelivery
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/labstack/echo/v5"
 )
 
 const requestIDHeader = "X-Request-ID"
 
-func RequestID(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestID := r.Header.Get(requestIDHeader)
-		if requestID == "" {
-			requestID = newRequestID()
+func RequestID() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			requestID := c.Request().Header.Get(requestIDHeader)
+			if requestID == "" {
+				requestID = newRequestID()
+			}
+
+			c.Request().Header.Set(requestIDHeader, requestID)
+			c.Response().Header().Set(requestIDHeader, requestID)
+
+			return next(c)
 		}
-
-		w.Header().Set(requestIDHeader, requestID)
-
-		next.ServeHTTP(w, r)
-	})
+	}
 }
 
 func newRequestID() string {

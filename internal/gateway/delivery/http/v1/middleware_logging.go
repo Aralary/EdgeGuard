@@ -1,27 +1,37 @@
 package httpdelivery
 
 import (
-	"log/slog"
-	"net/http"
+	"io"
 	"time"
+
+	"github.com/labstack/echo/v5"
+	"github.com/sirupsen/logrus"
 )
 
-func Logging(log *slog.Logger, next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
+func Logging(log *logrus.Logger) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c *echo.Context) error {
+			start := time.Now()
 
-		recorder := newResponseRecorder(w)
+			err := next(c)
 
-		next.ServeHTTP(recorder, r)
+			req := c.Request()
 
-		log.Info(
-			"gateway request completed",
-			slog.String("request_id", r.Header.Get(requestIDHeader)),
-			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
-			slog.Int("status", recorder.status),
-			slog.Int("bytes", recorder.bytes),
-			slog.Duration("duration", time.Since(start)),
-		)
-	})
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				log.WithError(err).Error("failed to read request body")
+				return err
+			}
+
+			log.WithFields(logrus.Fields{
+				"request_id": req.Header.Get(requestIDHeader),
+				"method":     req.Method,
+				"path":       req.URL.Path,
+				"bytes":      len(body),
+				"duration":   time.Since(start).String(),
+			}).Info("gateway request completed")
+
+			return err
+		}
+	}
 }

@@ -2,9 +2,7 @@ package app
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -12,10 +10,13 @@ import (
 	httpdelivery "github.com/aralary/edgeguard/internal/demo/delivery/http/v1"
 	"github.com/aralary/edgeguard/internal/demo/infrastructure/memory"
 	"github.com/aralary/edgeguard/internal/demo/usecase"
+	"github.com/aralary/edgeguard/internal/platform/logger"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 )
 
 func Run() error {
-	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	log := logger.New()
 
 	repo := memory.NewOrderRepository()
 
@@ -23,22 +24,23 @@ func Run() error {
 	getOrder := usecase.NewGetOrderUseCase(repo)
 	createOrder := usecase.NewCreateOrderUseCase(repo)
 
-	handler := httpdelivery.NewHandler(listOrders, getOrder, createOrder, log)
+	e := echo.New()
+	e.Use(middleware.Recover())
 
-	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux)
+	handler := httpdelivery.NewHandler(listOrders, getOrder, createOrder, log)
+	handler.RegisterRoutes(e)
 
 	server := &http.Server{
 		Addr:              ":8081",
-		Handler:           mux,
+		Handler:           e,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
-		log.Info("demo backend started", slog.String("addr", server.Addr))
+		log.WithField("addr", server.Addr).Info("demo backend started")
 
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error("demo backend failed", slog.String("error", err.Error()))
+			log.WithError(err).Error("demo backend failed")
 		}
 	}()
 

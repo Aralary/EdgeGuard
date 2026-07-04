@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,10 +12,13 @@ import (
 	"github.com/aralary/edgeguard/internal/gateway/infrastructure/config"
 	"github.com/aralary/edgeguard/internal/gateway/infrastructure/proxy"
 	"github.com/aralary/edgeguard/internal/gateway/usecase"
+	"github.com/aralary/edgeguard/internal/platform/logger"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 )
 
 func Run() error {
-	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	log := logger.New()
 
 	configPath := os.Getenv("GATEWAY_CONFIG_PATH")
 	if configPath == "" {
@@ -32,23 +34,26 @@ func Run() error {
 	resolveRoute := usecase.NewResolveRouteUseCase(routeRepo)
 	upstreamProxy := proxy.NewHTTPUtilProxy()
 
-	handler := httpdelivery.NewHandler(resolveRoute, upstreamProxy, log)
+	e := echo.New()
+	
+	e.Use(middleware.Recover())
+	e.Use(httpdelivery.RequestID())
+	e.Use(httpdelivery.Logging(log))
 
-	var httpHandler http.Handler = handler
-	httpHandler = httpdelivery.RequestID(httpHandler)
-	httpHandler = httpdelivery.Logging(log, httpHandler)
+	handler := httpdelivery.NewHandler(resolveRoute, upstreamProxy, log)
+	handler.RegisterRoutes(e)
 
 	server := &http.Server{
 		Addr:              cfg.HTTP.Addr,
-		Handler:           httpHandler,
+		Handler:           e,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	go func() {
-		log.Info("gateway started", slog.String("addr", server.Addr))
+		log.WithField("addr", server.Addr).Info("gateway started")
 
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Error("gateway failed", slog.String("error", err.Error()))
+			log.WithError(err).Error("gateway failed")
 		}
 	}()
 
