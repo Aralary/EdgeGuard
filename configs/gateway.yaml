@@ -1,0 +1,9 @@
+http:
+  addr: ":8080"
+
+routes:
+  - name: orders
+    path_prefix: /api/orders
+    upstream_url: http://localhost:8081
+    strip_prefix: true
+    timeout_ms: 3000
