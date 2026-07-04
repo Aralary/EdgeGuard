@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"time"
 
-	httpdelivery "github.com/aralary/edgeguard/internal/demo/delivery/http"
+	httpdelivery "github.com/aralary/edgeguard/internal/demo/delivery/http/v1"
 	"github.com/aralary/edgeguard/internal/demo/infrastructure/memory"
 	"github.com/aralary/edgeguard/internal/demo/usecase"
 )
