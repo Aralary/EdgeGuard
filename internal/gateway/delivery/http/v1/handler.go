@@ -1,14 +1,14 @@
 package httpdelivery
 
-import "github.com/sirupsen/logrus"
+import "github.com/aralary/edgeguard/internal/platform/logger"
 
 type Handler struct {
 	resolveRoute RouteResolver
 	proxy        UpstreamProxy
-	log          *logrus.Logger
+	log          logger.Logger
 }
 
-func NewHandler(resolveRoute RouteResolver, proxy UpstreamProxy, log *logrus.Logger) *Handler {
+func NewHandler(resolveRoute RouteResolver, proxy UpstreamProxy, log logger.Logger) *Handler {
 	return &Handler{
 		resolveRoute: resolveRoute,
 		proxy:        proxy,

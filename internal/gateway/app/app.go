@@ -35,7 +35,7 @@ func Run() error {
 	upstreamProxy := proxy.NewHTTPUtilProxy()
 
 	e := echo.New()
-	
+
 	e.Use(middleware.Recover())
 	e.Use(httpdelivery.RequestID())
 	e.Use(httpdelivery.Logging(log))
@@ -50,10 +50,10 @@ func Run() error {
 	}
 
 	go func() {
-		log.WithField("addr", server.Addr).Info("gateway started")
+		log.Infof("gateway started: addr=%s", server.Addr)
 
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.WithError(err).Error("gateway failed")
+			log.Errorf("gateway failed: %v", err)
 		}
 	}()
 

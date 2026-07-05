@@ -177,10 +177,14 @@ edgeguard
 │   └── platform
 │
 ├── configs
-│   └── gateway.yaml
+│   ├── gateway.yaml
+│   └── gateway.docker.yaml
 │
 ├── deployments
 │   ├── docker-compose.yml
+│   ├── docker
+│   │   ├── gateway.Dockerfile
+│   │   └── demo-backend.Dockerfile
 │   └── k8s
 │
 ├── migrations
@@ -225,7 +229,7 @@ http:
 
 routes:
   - name: orders
-    path_prefix: /api/orders
+    path_prefix: /api/v1
     upstream_url: http://demo-backend:8081
     strip_prefix: true
     timeout_ms: 3000
@@ -234,7 +238,7 @@ routes:
 Ожидаемый flow:
 
 ```text
-GET /api/orders
+GET /api/v1/orders
         |
         v
 Gateway
@@ -243,7 +247,17 @@ Gateway
 GET http://demo-backend:8081/orders
 ```
 
-### MVP 2 — Control Plane API
+### MVP 2 — Docker Compose local run
+
+* Dockerfile для gateway
+* Dockerfile для demo-backend
+* Docker Compose запуск всей текущей системы
+* Отдельная Docker-конфигурация gateway
+* Healthcheck для gateway
+* Healthcheck для demo-backend
+* Makefile-команды для локального запуска
+
+### MVP 3 — Control Plane API
 
 * PostgreSQL
 * Миграции
@@ -253,14 +267,14 @@ GET http://demo-backend:8081/orders
 * Route policies
 * OpenAPI-документация
 
-### MVP 3 — Dynamic Gateway Configuration
+### MVP 4 — Dynamic Gateway Configuration
 
 * Загрузка конфигурации gateway из Control Plane
 * Config polling
 * In-memory route cache
 * Обновление маршрутов без рестарта gateway
 
-### MVP 4 — Auth Service
+### MVP 5 — Auth Service
 
 * Регистрация пользователей
 * Login
@@ -270,7 +284,7 @@ GET http://demo-backend:8081/orders
 * Хеширование API-ключей
 * RBAC
 
-### MVP 5 — Redis Rate Limiting
+### MVP 6 — Redis Rate Limiting
 
 * Интеграция с Redis
 * Fixed window rate limiting
@@ -278,14 +292,14 @@ GET http://demo-backend:8081/orders
 * Rate limit by API key
 * Rate limit by route
 
-### MVP 6 — Kafka Analytics
+### MVP 7 — Kafka Analytics
 
 * Gateway access events
 * Kafka producer
 * Analytics worker
 * Агрегация статистики запросов
 
-### MVP 7 — RabbitMQ Background Jobs
+### MVP 8 — RabbitMQ Background Jobs
 
 * Notification worker
 * Webhook jobs
@@ -293,14 +307,14 @@ GET http://demo-backend:8081/orders
 * Cleanup jobs
 * Retry и dead-letter queue
 
-### MVP 8 — Observability
+### MVP 9 — Observability
 
 * Prometheus metrics
 * OpenTelemetry tracing
 * Grafana dashboard
 * Health и readiness endpoints
 
-### MVP 9 — Kubernetes Deployment
+### MVP 10 — Kubernetes Deployment
 
 * Kubernetes manifests
 * ConfigMap
@@ -317,7 +331,7 @@ GET http://demo-backend:8081/orders
 Планируемые технологии:
 
 * **Language:** Go
-* **HTTP:** net/http, chi
+* **HTTP:** Echo, net/http
 * **Reverse Proxy:** net/http/httputil
 * **Database:** PostgreSQL
 * **Migrations:** goose
@@ -333,10 +347,32 @@ GET http://demo-backend:8081/orders
 
 ## Локальный запуск
 
-Первый MVP будет запускаться через Docker Compose:
+### Запуск без Docker
+
+В первом терминале:
 
 ```bash
-docker compose up --build
+make run-demo
+```
+
+Во втором терминале:
+
+```bash
+make run-gateway
+```
+
+Проверка через gateway:
+
+```bash
+curl http://localhost:8080/api/v1/orders
+```
+
+### Запуск через Docker Compose
+
+Вся текущая система запускается одной командой:
+
+```bash
+make compose-up
 ```
 
 После запуска gateway будет доступен по адресу:
@@ -348,10 +384,16 @@ http://localhost:8080
 Пример запроса:
 
 ```bash
-curl http://localhost:8080/api/orders
+curl http://localhost:8080/api/v1/orders
 ```
 
-Ожидаемый результат: запрос будет обработан gateway и проксирован в demo backend.
+Healthcheck gateway:
+
+```bash
+curl http://localhost:8080/health
+```
+
+Ожидаемый результат: запрос будет обработан gateway и проксирован в demo backend. Demo-backend внутри Docker Compose не публикуется наружу и доступен gateway по внутреннему DNS-имени `demo-backend`.
 
 ## Архитектурные решения
 
@@ -392,7 +434,7 @@ curl http://localhost:8080/api/orders
 Текущий фокус:
 
 ```text
-MVP 1 — Static Gateway
+MVP 2 — Docker Compose local run
 ```
 
 ## License
