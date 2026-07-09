@@ -19,7 +19,7 @@ func (h *Handler) health(c *echo.Context) error {
 func (h *Handler) list(c *echo.Context) error {
 	orders, err := h.listOrders.Execute(c.Request().Context())
 	if err != nil {
-		h.log.WithError(err).Error("failed to list orders")
+		h.log.Errorf("failed to list orders: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
 	}
 
@@ -35,7 +35,7 @@ func (h *Handler) get(c *echo.Context) error {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "order not found"})
 		}
 
-		h.log.WithError(err).Error("failed to get order")
+		h.log.Errorf("failed to get order: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
 	}
 
@@ -51,7 +51,7 @@ func (h *Handler) create(c *echo.Context) error {
 
 	order, err := h.createOrder.Execute(c.Request().Context(), req)
 	if err != nil {
-		h.log.WithError(err).Error("failed to create order")
+		h.log.Errorf("failed to create order: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
 	}
 

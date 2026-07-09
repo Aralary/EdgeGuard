@@ -37,10 +37,10 @@ func Run() error {
 	}
 
 	go func() {
-		log.WithField("addr", server.Addr).Info("demo backend started")
+		log.Infof("demo backend started: addr=%s", server.Addr)
 
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.WithError(err).Error("demo backend failed")
+			log.Errorf("demo backend failed: %v", err)
 		}
 	}()
 

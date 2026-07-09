@@ -1,35 +1,39 @@
 package httpdelivery
 
 import (
-	"io"
 	"time"
 
+	"github.com/aralary/edgeguard/internal/platform/logger"
 	"github.com/labstack/echo/v5"
-	"github.com/sirupsen/logrus"
 )
 
-func Logging(log *logrus.Logger) echo.MiddlewareFunc {
+func Logging(log logger.Logger) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
+			req := c.Request()
+
+			if req.URL.Path == "/health" {
+				return next(c)
+			}
+
 			start := time.Now()
+			originalResponse := c.Response()
+			recorder := newResponseRecorder(originalResponse)
+
+			c.SetResponse(recorder)
+			defer c.SetResponse(originalResponse)
 
 			err := next(c)
 
-			req := c.Request()
-
-			body, err := io.ReadAll(req.Body)
-			if err != nil {
-				log.WithError(err).Error("failed to read request body")
-				return err
-			}
-
-			log.WithFields(logrus.Fields{
-				"request_id": req.Header.Get(requestIDHeader),
-				"method":     req.Method,
-				"path":       req.URL.Path,
-				"bytes":      len(body),
-				"duration":   time.Since(start).String(),
-			}).Info("gateway request completed")
+			log.Infof(
+				"gateway request completed: request_id=%s method=%s path=%s status=%d bytes=%d duration=%s",
+				req.Header.Get(requestIDHeader),
+				req.Method,
+				req.URL.Path,
+				recorder.status,
+				recorder.bytes,
+				time.Since(start).String(),
+			)
 
 			return err
 		}

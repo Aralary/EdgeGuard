@@ -1,6 +1,11 @@
 package httpdelivery
 
-import "net/http"
+import (
+	"bufio"
+	"errors"
+	"net"
+	"net/http"
+)
 
 type responseRecorder struct {
 	http.ResponseWriter
@@ -21,8 +26,32 @@ func (r *responseRecorder) WriteHeader(status int) {
 }
 
 func (r *responseRecorder) Write(data []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+
 	size, err := r.ResponseWriter.Write(data)
 	r.bytes += size
 
 	return size, err
+}
+
+func (r *responseRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
+func (r *responseRecorder) Flush() {
+	flusher, ok := r.ResponseWriter.(http.Flusher)
+	if ok {
+		flusher.Flush()
+	}
+}
+
+func (r *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hijacker, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("underlying response writer does not support hijacking")
+	}
+
+	return hijacker.Hijack()
 }
