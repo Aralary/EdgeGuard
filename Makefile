@@ -1,4 +1,6 @@
-.PHONY: run-gateway run-demo compose-build compose-rebuild compose-up compose-down compose-logs compose-ps smoke-test test fmt tidy
+POSTGRES_DSN ?= postgres://edgeguard:edgeguard@localhost:5432/edgeguard?sslmode=disable
+
+.PHONY: run-gateway run-demo compose-build compose-rebuild compose-up compose-down compose-logs compose-ps smoke-test migrate-up migrate-down migrate-status test fmt tidy
 
 run-gateway:
 	go run ./cmd/gateway
@@ -29,6 +31,15 @@ smoke-test:
 	curl -i http://localhost:8080/health
 	curl -i http://localhost:8080/api/v1/orders
 	curl -i http://localhost:8080/api/v1/orders/ord_1
+
+migrate-up:
+	go run github.com/pressly/goose/v3/cmd/goose@latest -dir migrations postgres "$(POSTGRES_DSN)" up
+
+migrate-down:
+	go run github.com/pressly/goose/v3/cmd/goose@latest -dir migrations postgres "$(POSTGRES_DSN)" down
+
+migrate-status:
+	go run github.com/pressly/goose/v3/cmd/goose@latest -dir migrations postgres "$(POSTGRES_DSN)" status
 
 test:
 	go test ./...
