@@ -381,16 +381,30 @@ make compose-up
 http://localhost:8080
 ```
 
-Пример запроса:
+Быстрая проверка:
 
 ```bash
-curl http://localhost:8080/api/v1/orders
+make smoke-test
 ```
 
-Healthcheck gateway:
+Или вручную:
 
 ```bash
 curl http://localhost:8080/health
+curl http://localhost:8080/api/v1/orders
+curl http://localhost:8080/api/v1/orders/ord_1
+```
+
+Логи контейнеров:
+
+```bash
+make compose-logs
+```
+
+Остановка:
+
+```bash
+make compose-down
 ```
 
 Ожидаемый результат: запрос будет обработан gateway и проксирован в demo backend. Demo-backend внутри Docker Compose не публикуется наружу и доступен gateway по внутреннему DNS-имени `demo-backend`.

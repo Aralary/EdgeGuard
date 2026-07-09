@@ -1,4 +1,4 @@
-.PHONY: run-gateway run-demo compose-build compose-rebuild compose-up compose-down compose-logs compose-ps test fmt tidy
+.PHONY: run-gateway run-demo compose-build compose-rebuild compose-up compose-down compose-logs compose-ps smoke-test test fmt tidy
 
 run-gateway:
 	go run ./cmd/gateway
@@ -23,6 +23,12 @@ compose-logs:
 
 compose-ps:
 	docker compose -f deployments/docker-compose.yml ps
+
+
+smoke-test:
+	curl -i http://localhost:8080/health
+	curl -i http://localhost:8080/api/v1/orders
+	curl -i http://localhost:8080/api/v1/orders/ord_1
 
 test:
 	go test ./...

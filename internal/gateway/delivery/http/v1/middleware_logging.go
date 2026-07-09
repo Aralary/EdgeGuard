@@ -1,7 +1,6 @@
 package httpdelivery
 
 import (
-	"io"
 	"time"
 
 	"github.com/aralary/edgeguard/internal/platform/logger"
@@ -18,31 +17,21 @@ func Logging(log logger.Logger) echo.MiddlewareFunc {
 			}
 
 			start := time.Now()
+			originalResponse := c.Response()
+			recorder := newResponseRecorder(originalResponse)
+
+			c.SetResponse(recorder)
+			defer c.SetResponse(originalResponse)
 
 			err := next(c)
 
-			buf, err := io.ReadAll(req.Body)
-
-			if err != nil {
-				log.Errorf(
-					"gateway request failed: request_id=%s method=%s path=%s bytes=%d duration=%s error=%v",
-					req.Header.Get(requestIDHeader),
-					req.Method,
-					req.URL.Path,
-					len(buf),
-					time.Since(start).String(),
-					err,
-				)
-
-				return err
-			}
-
 			log.Infof(
-				"gateway request completed: request_id=%s method=%s path=%s bytes=%d duration=%s",
+				"gateway request completed: request_id=%s method=%s path=%s status=%d bytes=%d duration=%s",
 				req.Header.Get(requestIDHeader),
 				req.Method,
 				req.URL.Path,
-				len(buf),
+				recorder.status,
+				recorder.bytes,
 				time.Since(start).String(),
 			)
 
