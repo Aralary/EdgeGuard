@@ -1,6 +1,6 @@
-POSTGRES_DSN ?= postgres://edgeguard:edgeguard@localhost:5432/edgeguard?sslmode=disable
+COMPOSE := docker compose -f deployments/docker-compose.yml
 
-.PHONY: run-gateway run-demo run-control-plane compose-build compose-rebuild compose-up compose-down compose-logs compose-ps smoke-test migrate-up migrate-down migrate-status test fmt tidy
+.PHONY: run-gateway run-demo run-control-plane compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps smoke-test migrate-up migrate-down migrate-status test fmt tidy
 
 run-gateway:
 	go run ./cmd/gateway
@@ -12,23 +12,25 @@ run-control-plane:
 	go run ./cmd/control-plane
 
 compose-build:
-	docker compose -f deployments/docker-compose.yml build
+	$(COMPOSE) build
 
 compose-rebuild:
-	docker compose -f deployments/docker-compose.yml build --no-cache
+	$(COMPOSE) build --no-cache
 
 compose-up:
-	docker compose -f deployments/docker-compose.yml up -d --build
+	$(COMPOSE) up -d --build
 
 compose-down:
-	docker compose -f deployments/docker-compose.yml down --remove-orphans
+	$(COMPOSE) down --remove-orphans
+
+compose-reset:
+	$(COMPOSE) down -v --remove-orphans
 
 compose-logs:
-	docker compose -f deployments/docker-compose.yml logs -f
+	$(COMPOSE) logs -f
 
 compose-ps:
-	docker compose -f deployments/docker-compose.yml ps
-
+	$(COMPOSE) ps -a
 
 smoke-test:
 	curl -i http://localhost:8080/health
@@ -37,13 +39,13 @@ smoke-test:
 	curl -i http://localhost:8082/health
 
 migrate-up:
-	go run github.com/pressly/goose/v3/cmd/goose@latest -dir migrations postgres "$(POSTGRES_DSN)" up
+	$(COMPOSE) run --rm migrate up
 
 migrate-down:
-	go run github.com/pressly/goose/v3/cmd/goose@latest -dir migrations postgres "$(POSTGRES_DSN)" down
+	$(COMPOSE) run --rm migrate down
 
 migrate-status:
-	go run github.com/pressly/goose/v3/cmd/goose@latest -dir migrations postgres "$(POSTGRES_DSN)" status
+	$(COMPOSE) run --rm migrate status
 
 test:
 	go test ./...

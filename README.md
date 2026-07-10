@@ -184,7 +184,9 @@ edgeguard
 │   ├── docker-compose.yml
 │   ├── docker
 │   │   ├── gateway.Dockerfile
-│   │   └── demo-backend.Dockerfile
+│   │   ├── demo-backend.Dockerfile
+│   │   ├── control-plane.Dockerfile
+│   │   └── migrations.Dockerfile
 │   └── k8s
 │
 ├── migrations
@@ -200,6 +202,48 @@ edgeguard
 ├── go.mod
 └── README.md
 ```
+
+## Локальный запуск
+
+Вся инфраструктура MVP3 запускается одной командой:
+
+```bash
+make compose-up
+```
+
+Порядок запуска контролируется Docker Compose:
+
+```text
+PostgreSQL становится healthy
+        ↓
+migrate применяет Goose-миграции и завершается с кодом 0
+        ↓
+control-plane подключается к подготовленной базе данных
+```
+
+Контейнер `edgeguard-migrate` является одноразовым. Состояние `Exited (0)` после запуска — нормальное: оно означает, что миграции успешно применены.
+
+Проверка состояния и API:
+
+```bash
+make compose-ps
+make migrate-status
+make smoke-test
+```
+
+Остановить сервисы, сохранив данные PostgreSQL:
+
+```bash
+make compose-down
+```
+
+Полностью удалить сервисы вместе с данными PostgreSQL:
+
+```bash
+make compose-reset
+```
+
+`compose-reset` удаляет named volume `postgres_data`, поэтому использовать эту команду следует только для полного сброса локальной базы данных.
 
 ## Roadmap
 
