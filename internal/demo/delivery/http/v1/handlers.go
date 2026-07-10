@@ -17,7 +17,7 @@ func (h *Handler) health(c *echo.Context) error {
 }
 
 func (h *Handler) list(c *echo.Context) error {
-	orders, err := h.listOrders.Execute(c.Request().Context())
+	orders, err := h.usecase.ListOrders(c.Request().Context())
 	if err != nil {
 		h.log.Errorf("failed to list orders: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})
@@ -29,7 +29,7 @@ func (h *Handler) list(c *echo.Context) error {
 func (h *Handler) get(c *echo.Context) error {
 	id := c.Param("id")
 
-	order, err := h.getOrder.Execute(c.Request().Context(), id)
+	order, err := h.usecase.GetOrder(c.Request().Context(), id)
 	if err != nil {
 		if errors.Is(err, memory.ErrOrderNotFound) {
 			return c.JSON(http.StatusNotFound, map[string]string{"error": "order not found"})
@@ -49,7 +49,7 @@ func (h *Handler) create(c *echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	order, err := h.createOrder.Execute(c.Request().Context(), req)
+	order, err := h.usecase.CreateOrder(c.Request().Context(), req)
 	if err != nil {
 		h.log.Errorf("failed to create order: %v", err)
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "internal error"})

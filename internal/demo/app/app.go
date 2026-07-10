@@ -20,14 +20,12 @@ func Run() error {
 
 	repo := memory.NewOrderRepository()
 
-	listOrders := usecase.NewListOrdersUseCase(repo)
-	getOrder := usecase.NewGetOrderUseCase(repo)
-	createOrder := usecase.NewCreateOrderUseCase(repo)
+	demoUsecase := usecase.New(repo)
 
 	e := echo.New()
 	e.Use(middleware.Recover())
 
-	handler := httpdelivery.NewHandler(listOrders, getOrder, createOrder, log)
+	handler := httpdelivery.NewHandler(demoUsecase, log)
 	handler.RegisterRoutes(e)
 
 	server := &http.Server{

@@ -21,7 +21,7 @@ func (r fakeRouteRepository) ListRoutes(ctx context.Context) ([]domain.Route, er
 	return r.routes, nil
 }
 
-func TestResolveRouteUseCaseExecute(t *testing.T) {
+func TestUsecaseResolveRoute(t *testing.T) {
 	tests := []struct {
 		name      string
 		routes    []domain.Route
@@ -65,34 +65,34 @@ func TestResolveRouteUseCaseExecute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := NewResolveRouteUseCase(fakeRouteRepository{routes: tt.routes})
+			uc := New(fakeRouteRepository{routes: tt.routes})
 
-			got, err := uc.Execute(context.Background(), tt.path)
+			got, err := uc.ResolveRoute(context.Background(), tt.path)
 			if tt.wantErr != nil {
 				if !errors.Is(err, tt.wantErr) {
-					t.Fatalf("Execute() error = %v, want %v", err, tt.wantErr)
+					t.Fatalf("ResolveRoute() error = %v, want %v", err, tt.wantErr)
 				}
 
 				return
 			}
 
 			if err != nil {
-				t.Fatalf("Execute() unexpected error = %v", err)
+				t.Fatalf("ResolveRoute() unexpected error = %v", err)
 			}
 
 			if got.Name != tt.wantRoute {
-				t.Fatalf("Execute() route = %q, want %q", got.Name, tt.wantRoute)
+				t.Fatalf("ResolveRoute() route = %q, want %q", got.Name, tt.wantRoute)
 			}
 		})
 	}
 }
 
-func TestResolveRouteUseCaseExecuteReturnsRepositoryError(t *testing.T) {
+func TestUsecaseResolveRouteReturnsRepositoryError(t *testing.T) {
 	repoErr := errors.New("repository failed")
-	uc := NewResolveRouteUseCase(fakeRouteRepository{err: repoErr})
+	uc := New(fakeRouteRepository{err: repoErr})
 
-	_, err := uc.Execute(context.Background(), "/api/v1/orders")
+	_, err := uc.ResolveRoute(context.Background(), "/api/v1/orders")
 	if !errors.Is(err, repoErr) {
-		t.Fatalf("Execute() error = %v, want %v", err, repoErr)
+		t.Fatalf("ResolveRoute() error = %v, want %v", err, repoErr)
 	}
 }

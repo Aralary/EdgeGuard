@@ -1,27 +1,26 @@
 package httpdelivery
 
 import (
-	"github.com/aralary/edgeguard/internal/demo/usecase"
+	"context"
+
+	"github.com/aralary/edgeguard/internal/demo/domain"
 	"github.com/aralary/edgeguard/internal/platform/logger"
 )
 
-type Handler struct {
-	listOrders  *usecase.ListOrdersUseCase
-	getOrder    *usecase.GetOrderUseCase
-	createOrder *usecase.CreateOrderUseCase
-	log         logger.Logger
+type OrderUsecase interface {
+	ListOrders(ctx context.Context) ([]domain.Order, error)
+	GetOrder(ctx context.Context, id string) (domain.Order, error)
+	CreateOrder(ctx context.Context, order domain.Order) (domain.Order, error)
 }
 
-func NewHandler(
-	listOrders *usecase.ListOrdersUseCase,
-	getOrder *usecase.GetOrderUseCase,
-	createOrder *usecase.CreateOrderUseCase,
-	log logger.Logger,
-) *Handler {
+type Handler struct {
+	usecase OrderUsecase
+	log     logger.Logger
+}
+
+func NewHandler(usecase OrderUsecase, log logger.Logger) *Handler {
 	return &Handler{
-		listOrders:  listOrders,
-		getOrder:    getOrder,
-		createOrder: createOrder,
-		log:         log,
+		usecase: usecase,
+		log:     log,
 	}
 }

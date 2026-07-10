@@ -38,60 +38,60 @@ func (r fakeOrderRepository) CreateOrder(ctx context.Context, order domain.Order
 	return order, nil
 }
 
-func TestListOrdersUseCaseExecute(t *testing.T) {
+func TestUsecaseListOrders(t *testing.T) {
 	orders := []domain.Order{{ID: "ord_1", Status: "created", Amount: 1000}}
-	uc := NewListOrdersUseCase(fakeOrderRepository{orders: orders})
+	uc := New(fakeOrderRepository{orders: orders})
 
-	got, err := uc.Execute(context.Background())
+	got, err := uc.ListOrders(context.Background())
 	if err != nil {
-		t.Fatalf("Execute() unexpected error = %v", err)
+		t.Fatalf("unexpected error = %v", err)
 	}
 
 	if len(got) != 1 || got[0] != orders[0] {
-		t.Fatalf("Execute() = %+v, want %+v", got, orders)
+		t.Fatalf("result = %+v, want %+v", got, orders)
 	}
 }
 
-func TestGetOrderUseCaseExecute(t *testing.T) {
+func TestUsecaseGetOrder(t *testing.T) {
 	order := domain.Order{ID: "ord_1", Status: "created", Amount: 1000}
-	uc := NewGetOrderUseCase(fakeOrderRepository{order: order})
+	uc := New(fakeOrderRepository{order: order})
 
-	got, err := uc.Execute(context.Background(), order.ID)
+	got, err := uc.GetOrder(context.Background(), order.ID)
 	if err != nil {
-		t.Fatalf("Execute() unexpected error = %v", err)
+		t.Fatalf("unexpected error = %v", err)
 	}
 
 	if got != order {
-		t.Fatalf("Execute() = %+v, want %+v", got, order)
+		t.Fatalf("result = %+v, want %+v", got, order)
 	}
 }
 
-func TestCreateOrderUseCaseExecute(t *testing.T) {
+func TestUsecaseCreateOrder(t *testing.T) {
 	order := domain.Order{ID: "ord_1", Status: "created", Amount: 1000}
-	uc := NewCreateOrderUseCase(fakeOrderRepository{})
+	uc := New(fakeOrderRepository{})
 
-	got, err := uc.Execute(context.Background(), order)
+	got, err := uc.CreateOrder(context.Background(), order)
 	if err != nil {
-		t.Fatalf("Execute() unexpected error = %v", err)
+		t.Fatalf("unexpected error = %v", err)
 	}
 
 	if got != order {
-		t.Fatalf("Execute() = %+v, want %+v", got, order)
+		t.Fatalf("result = %+v, want %+v", got, order)
 	}
 }
 
-func TestUseCasesReturnRepositoryError(t *testing.T) {
+func TestUsecaseReturnsRepositoryError(t *testing.T) {
 	repoErr := errors.New("repository failed")
 
-	if _, err := NewListOrdersUseCase(fakeOrderRepository{err: repoErr}).Execute(context.Background()); !errors.Is(err, repoErr) {
-		t.Fatalf("ListOrdersUseCase error = %v, want %v", err, repoErr)
+	if _, err := New(fakeOrderRepository{err: repoErr}).ListOrders(context.Background()); !errors.Is(err, repoErr) {
+		t.Fatalf("ListOrders error = %v, want %v", err, repoErr)
 	}
 
-	if _, err := NewGetOrderUseCase(fakeOrderRepository{err: repoErr}).Execute(context.Background(), "ord_1"); !errors.Is(err, repoErr) {
-		t.Fatalf("GetOrderUseCase error = %v, want %v", err, repoErr)
+	if _, err := New(fakeOrderRepository{err: repoErr}).GetOrder(context.Background(), "ord_1"); !errors.Is(err, repoErr) {
+		t.Fatalf("GetOrder error = %v, want %v", err, repoErr)
 	}
 
-	if _, err := NewCreateOrderUseCase(fakeOrderRepository{err: repoErr}).Execute(context.Background(), domain.Order{}); !errors.Is(err, repoErr) {
-		t.Fatalf("CreateOrderUseCase error = %v, want %v", err, repoErr)
+	if _, err := New(fakeOrderRepository{err: repoErr}).CreateOrder(context.Background(), domain.Order{}); !errors.Is(err, repoErr) {
+		t.Fatalf("CreateOrder error = %v, want %v", err, repoErr)
 	}
 }

@@ -31,7 +31,7 @@ func Run() error {
 	}
 
 	routeRepo := config.NewYAMLRouteRepository(cfg.DomainRoutes())
-	resolveRoute := usecase.NewResolveRouteUseCase(routeRepo)
+	gatewayUsecase := usecase.New(routeRepo)
 	upstreamProxy := proxy.NewHTTPUtilProxy()
 
 	e := echo.New()
@@ -40,7 +40,7 @@ func Run() error {
 	e.Use(httpdelivery.RequestID())
 	e.Use(httpdelivery.Logging(log))
 
-	handler := httpdelivery.NewHandler(resolveRoute, upstreamProxy, log)
+	handler := httpdelivery.NewHandler(gatewayUsecase, upstreamProxy, log)
 	handler.RegisterRoutes(e)
 
 	server := &http.Server{

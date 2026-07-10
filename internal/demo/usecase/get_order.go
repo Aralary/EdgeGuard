@@ -6,14 +6,6 @@ import (
 	"github.com/aralary/edgeguard/internal/demo/domain"
 )
 
-type GetOrderUseCase struct {
-	orders OrderRepository
-}
-
-func NewGetOrderUseCase(orders OrderRepository) *GetOrderUseCase {
-	return &GetOrderUseCase{orders: orders}
-}
-
-func (uc *GetOrderUseCase) Execute(ctx context.Context, id string) (domain.Order, error) {
-	return uc.orders.GetOrderByID(ctx, id)
+func (u *Usecase) GetOrder(ctx context.Context, id string) (domain.Order, error) {
+	return u.orderRepository.GetOrderByID(ctx, id)
 }

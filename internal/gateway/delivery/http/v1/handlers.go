@@ -18,7 +18,7 @@ func (h *Handler) health(c *echo.Context) error {
 func (h *Handler) proxyRequest(c *echo.Context) error {
 	req := c.Request()
 
-	route, err := h.resolveRoute.Execute(req.Context(), req.URL.Path)
+	route, err := h.resolveRoute.ResolveRoute(req.Context(), req.URL.Path)
 	if err != nil {
 		if errors.Is(err, domain.ErrRouteNotFound) {
 			return c.String(http.StatusNotFound, "route not found\n")
