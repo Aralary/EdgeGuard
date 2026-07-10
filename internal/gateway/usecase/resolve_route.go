@@ -6,18 +6,8 @@ import (
 	"github.com/aralary/edgeguard/internal/gateway/domain"
 )
 
-type ResolveRouteUseCase struct {
-	routes RouteRepository
-}
-
-func NewResolveRouteUseCase(routes RouteRepository) *ResolveRouteUseCase {
-	return &ResolveRouteUseCase{
-		routes: routes,
-	}
-}
-
-func (uc *ResolveRouteUseCase) Execute(ctx context.Context, path string) (domain.Route, error) {
-	routes, err := uc.routes.ListRoutes(ctx)
+func (u *Usecase) ResolveRoute(ctx context.Context, path string) (domain.Route, error) {
+	routes, err := u.routeRepository.ListRoutes(ctx)
 	if err != nil {
 		return domain.Route{}, err
 	}

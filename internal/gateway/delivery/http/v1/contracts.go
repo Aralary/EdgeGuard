@@ -8,7 +8,7 @@ import (
 )
 
 type RouteResolver interface {
-	Execute(ctx context.Context, path string) (domain.Route, error)
+	ResolveRoute(ctx context.Context, path string) (domain.Route, error)
 }
 
 type UpstreamProxy interface {
