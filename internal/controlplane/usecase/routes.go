@@ -33,3 +33,7 @@ func (u *Usecase) ListRoutes(ctx context.Context, serviceID string) ([]domain.Ro
 
 	return u.routeRepository.ListRoutesByServiceID(ctx, serviceID)
 }
+
+func (u *Usecase) ListGatewayRoutes(ctx context.Context) ([]domain.GatewayRoute, error) {
+	return u.routeRepository.ListGatewayRoutes(ctx)
+}

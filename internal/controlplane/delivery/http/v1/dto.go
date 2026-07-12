@@ -115,3 +115,30 @@ func newRouteListResponse(routes []domain.Route) []routeResponse {
 
 	return response
 }
+
+type gatewayRouteResponse struct {
+	Name        string `json:"name"`
+	PathPrefix  string `json:"path_prefix"`
+	UpstreamURL string `json:"upstream_url"`
+	StripPrefix bool   `json:"strip_prefix"`
+	TimeoutMS   int    `json:"timeout_ms"`
+}
+
+func newGatewayRouteResponse(route domain.GatewayRoute) gatewayRouteResponse {
+	return gatewayRouteResponse{
+		Name:        route.Name,
+		PathPrefix:  route.PathPrefix,
+		UpstreamURL: route.UpstreamURL,
+		StripPrefix: route.StripPrefix,
+		TimeoutMS:   route.TimeoutMS,
+	}
+}
+
+func newGatewayRouteListResponse(routes []domain.GatewayRoute) []gatewayRouteResponse {
+	response := make([]gatewayRouteResponse, 0, len(routes))
+	for _, route := range routes {
+		response = append(response, newGatewayRouteResponse(route))
+	}
+
+	return response
+}

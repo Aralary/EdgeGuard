@@ -110,3 +110,48 @@ func (r *Repository) ListRoutesByServiceID(ctx context.Context, serviceID string
 
 	return routes, nil
 }
+
+const listGatewayRoutesQuery = `
+SELECT
+    routes.name,
+    routes.path_prefix,
+    services.upstream_url,
+    routes.strip_prefix,
+    routes.timeout_ms
+FROM routes
+JOIN services ON services.id = routes.service_id
+WHERE routes.enabled = TRUE
+ORDER BY length(routes.path_prefix) DESC, routes.path_prefix ASC, routes.id ASC
+`
+
+func (r *Repository) ListGatewayRoutes(ctx context.Context) ([]domain.GatewayRoute, error) {
+	rows, err := r.db.Query(ctx, listGatewayRoutesQuery)
+	if err != nil {
+		return nil, fmt.Errorf("list gateway routes: %w", err)
+	}
+	defer rows.Close()
+
+	routes := make([]domain.GatewayRoute, 0)
+
+	for rows.Next() {
+		var route domain.GatewayRoute
+
+		if err := rows.Scan(
+			&route.Name,
+			&route.PathPrefix,
+			&route.UpstreamURL,
+			&route.StripPrefix,
+			&route.TimeoutMS,
+		); err != nil {
+			return nil, fmt.Errorf("scan gateway route: %w", err)
+		}
+
+		routes = append(routes, route)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate gateway routes: %w", err)
+	}
+
+	return routes, nil
+}

@@ -19,4 +19,5 @@ type ServiceRepository interface {
 type RouteRepository interface {
 	CreateRoute(ctx context.Context, route domain.Route) (domain.Route, error)
 	ListRoutesByServiceID(ctx context.Context, serviceID string) ([]domain.Route, error)
+	ListGatewayRoutes(ctx context.Context) ([]domain.GatewayRoute, error)
 }
