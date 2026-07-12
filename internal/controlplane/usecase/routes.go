@@ -8,13 +8,16 @@ import (
 )
 
 type CreateRouteInput struct {
-	ServiceID    string
-	Name         string
-	PathPrefix   string
-	StripPrefix  bool
-	TimeoutMS    int
-	Enabled      bool
-	AuthRequired bool
+	ServiceID              string
+	Name                   string
+	PathPrefix             string
+	StripPrefix            bool
+	TimeoutMS              int
+	Enabled                bool
+	AuthRequired           bool
+	RateLimitEnabled       bool
+	RateLimitRequests      int
+	RateLimitWindowSeconds int
 }
 
 func (u *Usecase) CreateRoute(ctx context.Context, input CreateRouteInput) (domain.Route, error) {
@@ -26,6 +29,11 @@ func (u *Usecase) CreateRoute(ctx context.Context, input CreateRouteInput) (doma
 		input.TimeoutMS,
 		input.Enabled,
 		input.AuthRequired,
+		domain.RateLimitPolicy{
+			Enabled:       input.RateLimitEnabled,
+			Requests:      input.RateLimitRequests,
+			WindowSeconds: input.RateLimitWindowSeconds,
+		},
 	)
 	if err != nil {
 		return domain.Route{}, err

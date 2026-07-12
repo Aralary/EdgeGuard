@@ -25,13 +25,16 @@ func (h *Handler) createRoute(c *echo.Context) error {
 	}
 
 	route, err := h.usecase.CreateRoute(c.Request().Context(), usecase.CreateRouteInput{
-		ServiceID:    c.Param("service_id"),
-		Name:         request.Name,
-		PathPrefix:   request.PathPrefix,
-		StripPrefix:  stripPrefix,
-		TimeoutMS:    request.TimeoutMS,
-		Enabled:      enabled,
-		AuthRequired: request.AuthRequired,
+		ServiceID:              c.Param("service_id"),
+		Name:                   request.Name,
+		PathPrefix:             request.PathPrefix,
+		StripPrefix:            stripPrefix,
+		TimeoutMS:              request.TimeoutMS,
+		Enabled:                enabled,
+		AuthRequired:           request.AuthRequired,
+		RateLimitEnabled:       request.RateLimitEnabled,
+		RateLimitRequests:      request.RateLimitRequests,
+		RateLimitWindowSeconds: request.RateLimitWindowSeconds,
 	})
 	if err != nil {
 		return h.handleError(c, "failed to create route", err)

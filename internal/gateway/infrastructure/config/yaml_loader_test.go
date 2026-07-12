@@ -84,13 +84,16 @@ func TestConfigDomainRoutes(t *testing.T) {
 	cfg := Config{
 		Routes: []RouteConfig{
 			{
-				ProjectID:    "project-1",
-				Name:         "with-timeout",
-				PathPrefix:   "/api/v1",
-				UpstreamURL:  "http://localhost:8081",
-				StripPrefix:  true,
-				TimeoutMS:    3000,
-				AuthRequired: true,
+				ProjectID:              "project-1",
+				Name:                   "with-timeout",
+				PathPrefix:             "/api/v1",
+				UpstreamURL:            "http://localhost:8081",
+				StripPrefix:            true,
+				TimeoutMS:              3000,
+				AuthRequired:           true,
+				RateLimitEnabled:       true,
+				RateLimitRequests:      100,
+				RateLimitWindowSeconds: 60,
 			},
 			{
 				Name:        "default-timeout",
@@ -111,6 +114,9 @@ func TestConfigDomainRoutes(t *testing.T) {
 	}
 	if routes[0].ProjectID != "project-1" || !routes[0].AuthRequired {
 		t.Fatalf("routes[0] auth policy = %#v", routes[0])
+	}
+	if !routes[0].RateLimit.Enabled || routes[0].RateLimit.Limit != 100 || routes[0].RateLimit.Window != time.Minute {
+		t.Fatalf("routes[0] rate limit = %#v", routes[0].RateLimit)
 	}
 
 	if routes[1].Timeout != 5*time.Second {

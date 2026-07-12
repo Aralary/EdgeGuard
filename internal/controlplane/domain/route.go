@@ -16,6 +16,7 @@ type Route struct {
 	TimeoutMS    int
 	Enabled      bool
 	AuthRequired bool
+	RateLimit    RateLimitPolicy
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -28,6 +29,7 @@ func NewRoute(
 	timeoutMS int,
 	enabled bool,
 	authRequired bool,
+	rateLimit RateLimitPolicy,
 ) (Route, error) {
 	serviceID = strings.TrimSpace(serviceID)
 	name = strings.TrimSpace(name)
@@ -49,6 +51,15 @@ func NewRoute(
 		timeoutMS = DefaultRouteTimeoutMS
 	}
 
+	rateLimit, err := NewRateLimitPolicy(
+		rateLimit.Enabled,
+		rateLimit.Requests,
+		rateLimit.WindowSeconds,
+	)
+	if err != nil {
+		return Route{}, err
+	}
+
 	return Route{
 		ServiceID:    serviceID,
 		Name:         name,
@@ -57,5 +68,6 @@ func NewRoute(
 		TimeoutMS:    timeoutMS,
 		Enabled:      enabled,
 		AuthRequired: authRequired,
+		RateLimit:    rateLimit,
 	}, nil
 }

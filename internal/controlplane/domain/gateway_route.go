@@ -10,4 +10,5 @@ type GatewayRoute struct {
 	StripPrefix  bool
 	TimeoutMS    int
 	AuthRequired bool
+	RateLimit    RateLimitPolicy
 }
