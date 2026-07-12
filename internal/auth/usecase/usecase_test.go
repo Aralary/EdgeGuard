@@ -481,3 +481,19 @@ func TestLogoutRevokesRefreshToken(t *testing.T) {
 		t.Fatalf("revoked at = %v, want %v", refreshTokens.revokedAt, now)
 	}
 }
+
+func TestLogoutHidesUnknownRefreshToken(t *testing.T) {
+	uc := New(
+		&fakeUserRepository{},
+		&fakeRefreshTokenRepository{revokeErr: ErrRefreshTokenNotFound},
+		&fakePasswordHasher{},
+		&fakeTokenService{},
+		fixedClock{},
+		Config{},
+	)
+
+	err := uc.Logout(context.Background(), LogoutInput{RefreshToken: "unknown-token"})
+	if !errors.Is(err, ErrInvalidRefreshToken) {
+		t.Fatalf("Logout() error = %v, want %v", err, ErrInvalidRefreshToken)
+	}
+}

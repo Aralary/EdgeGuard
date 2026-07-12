@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"strings"
 )
 
@@ -20,5 +21,10 @@ func (u *Usecase) Logout(ctx context.Context, input LogoutInput) error {
 		return ErrInvalidRefreshToken
 	}
 
-	return u.refreshTokenRepository.RevokeRefreshTokenByHash(ctx, tokenHash, u.clock.Now())
+	err := u.refreshTokenRepository.RevokeRefreshTokenByHash(ctx, tokenHash, u.clock.Now())
+	if errors.Is(err, ErrRefreshTokenNotFound) {
+		return ErrInvalidRefreshToken
+	}
+
+	return err
 }
