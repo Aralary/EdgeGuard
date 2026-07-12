@@ -454,6 +454,58 @@ curl http://localhost:8082/internal/v1/routes
 
 После создания маршрута через Control Plane Gateway подхватит его не позднее чем через `ROUTES_REFRESH_INTERVAL` и начнет проксировать соответствующие запросы без перезапуска.
 
+### E2E-проверка динамической конфигурации
+
+Для проверки полного сценария MVP4 требуется `jq`:
+
+```bash
+sudo dnf install jq
+```
+
+После запуска контейнеров выполните:
+
+```bash
+make e2e-test
+```
+
+Тест автоматически:
+
+1. Проверяет health endpoints Gateway и Control Plane.
+2. Проверяет, что новый уникальный path prefix пока неизвестен Gateway и возвращает `404`.
+3. Создает уникальные project, service и route через Control Plane API.
+4. Проверяет, что route появился в `GET /internal/v1/routes`.
+5. Ожидает очередное polling-обновление Gateway.
+6. Выполняет запрос к Demo Backend через новый динамический маршрут и проверяет ответ.
+
+Проверяемый поток:
+
+```text
+E2E script
+    |
+    | POST project/service/route
+    v
+Control Plane ----> PostgreSQL
+    |
+    | GET /internal/v1/routes
+    v
+Gateway route polling
+    |
+    | atomic in-memory snapshot replacement
+    v
+GET /e2e-<run-id>/orders ----> Demo Backend /orders
+```
+
+Каждый запуск использует уникальные имена и path prefix, поэтому тест можно запускать повторно без сброса PostgreSQL. Созданные тестовые записи сохраняются в базе; для полной очистки используйте `make compose-reset`.
+
+Переменные теста можно переопределить:
+
+```bash
+CONTROL_PLANE_URL=http://localhost:8082 \
+GATEWAY_URL=http://localhost:8080 \
+E2E_TIMEOUT_SECONDS=30 \
+make e2e-test
+```
+
 Логи контейнеров:
 
 ```bash
@@ -507,7 +559,7 @@ make compose-down
 Текущий фокус:
 
 ```text
-MVP 2 — Docker Compose local run
+MVP 4 — Dynamic Gateway Configuration
 ```
 
 ## License
