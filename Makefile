@@ -1,6 +1,6 @@
 COMPOSE := docker compose -f deployments/docker-compose.yml
 
-.PHONY: run-gateway run-demo run-control-plane compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps smoke-test e2e-test migrate-up migrate-down migrate-status test fmt tidy
+.PHONY: run-gateway run-demo run-control-plane run-auth compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps smoke-test e2e-test migrate-up migrate-down migrate-status test fmt tidy
 
 run-gateway:
 	go run ./cmd/gateway
@@ -10,6 +10,9 @@ run-demo:
 
 run-control-plane:
 	go run ./cmd/control-plane
+
+run-auth:
+	go run ./cmd/auth
 
 compose-build:
 	$(COMPOSE) build
@@ -36,6 +39,8 @@ smoke-test:
 	curl -fsS http://localhost:8080/health
 	@echo
 	curl -fsS http://localhost:8082/health
+	@echo
+	curl -fsS http://localhost:8083/health
 	@echo
 	curl -fsS http://localhost:8082/internal/v1/routes
 	@echo
