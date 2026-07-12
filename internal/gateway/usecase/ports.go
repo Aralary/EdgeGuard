@@ -14,3 +14,7 @@ type RouteRepository interface {
 type RouteSource interface {
 	ListRoutes(ctx context.Context) ([]domain.Route, error)
 }
+
+type APIKeyValidator interface {
+	ValidateAPIKey(ctx context.Context, rawAPIKey string) (domain.APIKeyPrincipal, error)
+}

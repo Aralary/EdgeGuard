@@ -98,11 +98,14 @@ services:
     environment:
       GATEWAY_CONFIG_PATH: /app/configs/gateway.docker.yaml
       CONTROL_PLANE_URL: http://control-plane:8082
+      AUTH_SERVICE_URL: http://auth:8083
       ROUTES_REFRESH_INTERVAL: 10s
     ports:
       - "8080:8080"
     depends_on:
       control-plane:
+        condition: service_healthy
+      auth:
         condition: service_healthy
       demo-backend:
         condition: service_healthy

@@ -16,11 +16,12 @@ type createServiceRequest struct {
 }
 
 type createRouteRequest struct {
-	Name        string `json:"name"`
-	PathPrefix  string `json:"path_prefix"`
-	StripPrefix *bool  `json:"strip_prefix"`
-	TimeoutMS   int    `json:"timeout_ms"`
-	Enabled     *bool  `json:"enabled"`
+	Name         string `json:"name"`
+	PathPrefix   string `json:"path_prefix"`
+	StripPrefix  *bool  `json:"strip_prefix"`
+	TimeoutMS    int    `json:"timeout_ms"`
+	Enabled      *bool  `json:"enabled"`
+	AuthRequired bool   `json:"auth_required"`
 }
 
 type projectResponse struct {
@@ -40,15 +41,16 @@ type serviceResponse struct {
 }
 
 type routeResponse struct {
-	ID          string    `json:"id"`
-	ServiceID   string    `json:"service_id"`
-	Name        string    `json:"name"`
-	PathPrefix  string    `json:"path_prefix"`
-	StripPrefix bool      `json:"strip_prefix"`
-	TimeoutMS   int       `json:"timeout_ms"`
-	Enabled     bool      `json:"enabled"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	ServiceID    string    `json:"service_id"`
+	Name         string    `json:"name"`
+	PathPrefix   string    `json:"path_prefix"`
+	StripPrefix  bool      `json:"strip_prefix"`
+	TimeoutMS    int       `json:"timeout_ms"`
+	Enabled      bool      `json:"enabled"`
+	AuthRequired bool      `json:"auth_required"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type errorResponse struct {
@@ -95,15 +97,16 @@ func newServiceListResponse(services []domain.Service) []serviceResponse {
 
 func newRouteResponse(route domain.Route) routeResponse {
 	return routeResponse{
-		ID:          route.ID,
-		ServiceID:   route.ServiceID,
-		Name:        route.Name,
-		PathPrefix:  route.PathPrefix,
-		StripPrefix: route.StripPrefix,
-		TimeoutMS:   route.TimeoutMS,
-		Enabled:     route.Enabled,
-		CreatedAt:   route.CreatedAt,
-		UpdatedAt:   route.UpdatedAt,
+		ID:           route.ID,
+		ServiceID:    route.ServiceID,
+		Name:         route.Name,
+		PathPrefix:   route.PathPrefix,
+		StripPrefix:  route.StripPrefix,
+		TimeoutMS:    route.TimeoutMS,
+		Enabled:      route.Enabled,
+		AuthRequired: route.AuthRequired,
+		CreatedAt:    route.CreatedAt,
+		UpdatedAt:    route.UpdatedAt,
 	}
 }
 
@@ -117,20 +120,24 @@ func newRouteListResponse(routes []domain.Route) []routeResponse {
 }
 
 type gatewayRouteResponse struct {
-	Name        string `json:"name"`
-	PathPrefix  string `json:"path_prefix"`
-	UpstreamURL string `json:"upstream_url"`
-	StripPrefix bool   `json:"strip_prefix"`
-	TimeoutMS   int    `json:"timeout_ms"`
+	ProjectID    string `json:"project_id"`
+	Name         string `json:"name"`
+	PathPrefix   string `json:"path_prefix"`
+	UpstreamURL  string `json:"upstream_url"`
+	StripPrefix  bool   `json:"strip_prefix"`
+	TimeoutMS    int    `json:"timeout_ms"`
+	AuthRequired bool   `json:"auth_required"`
 }
 
 func newGatewayRouteResponse(route domain.GatewayRoute) gatewayRouteResponse {
 	return gatewayRouteResponse{
-		Name:        route.Name,
-		PathPrefix:  route.PathPrefix,
-		UpstreamURL: route.UpstreamURL,
-		StripPrefix: route.StripPrefix,
-		TimeoutMS:   route.TimeoutMS,
+		ProjectID:    route.ProjectID,
+		Name:         route.Name,
+		PathPrefix:   route.PathPrefix,
+		UpstreamURL:  route.UpstreamURL,
+		StripPrefix:  route.StripPrefix,
+		TimeoutMS:    route.TimeoutMS,
+		AuthRequired: route.AuthRequired,
 	}
 }
 

@@ -186,6 +186,7 @@ edgeguard
 │   │   ├── gateway.Dockerfile
 │   │   ├── demo-backend.Dockerfile
 │   │   ├── control-plane.Dockerfile
+│   │   ├── auth.Dockerfile
 │   │   └── migrations.Dockerfile
 │   └── k8s
 │
@@ -205,7 +206,7 @@ edgeguard
 
 ## Локальный запуск
 
-Вся инфраструктура MVP4 запускается одной командой:
+Вся инфраструктура MVP5 запускается одной командой:
 
 ```bash
 make compose-up
@@ -218,19 +219,20 @@ PostgreSQL становится healthy
         ↓
 migrate применяет Goose-миграции и завершается с кодом 0
         ↓
-control-plane подключается к подготовленной базе данных
+control-plane и auth подключаются к подготовленной базе данных
         ↓
-gateway дожидается готовности control-plane
+gateway дожидается готовности control-plane, auth и demo-backend
         ↓
 gateway загружает routes snapshot и запускает polling
 ```
 
 Контейнер `edgeguard-migrate` является одноразовым. Состояние `Exited (0)` после запуска — нормальное: оно означает, что миграции успешно применены.
 
-В Docker Compose Gateway использует Control Plane как основной источник маршрутов:
+В Docker Compose Gateway использует Control Plane как источник маршрутов и Auth Service для проверки API-ключей:
 
 ```text
 CONTROL_PLANE_URL=http://control-plane:8082
+AUTH_SERVICE_URL=http://auth:8083
 ROUTES_REFRESH_INTERVAL=10s
 ```
 
@@ -339,7 +341,42 @@ GET http://demo-backend:8081/orders
 * Refresh tokens
 * API keys
 * Хеширование API-ключей
-* RBAC
+* Базовые роли пользователей в JWT (полный project-level RBAC запланирован отдельно)
+
+### Реализованное поведение MVP 5
+
+Auth Service доступен на `:8083` и предоставляет регистрацию, login, refresh/logout, управление API-ключами и внутреннюю проверку ключей.
+
+Маршрут Control Plane может быть защищен политикой:
+
+```json
+{
+  "auth_required": true
+}
+```
+
+Control Plane включает в snapshot `project_id` и `auth_required`. Gateway для защищенного маршрута:
+
+```text
+X-API-Key
+    ↓
+POST auth:8083/internal/v1/api-keys/validate
+    ↓
+проверка hash, enabled и expires_at
+    ↓
+сверка project_id ключа с project_id маршрута
+    ↓
+proxy request в upstream
+```
+
+Коды ответа Gateway:
+
+* `401` — ключ отсутствует, невалиден, истек или отозван;
+* `403` — валидный ключ принадлежит другому проекту;
+* `503` — Auth Service недоступен;
+* `200` — ключ валиден и принадлежит проекту маршрута.
+
+Заголовок `X-API-Key` удаляется перед проксированием, поэтому секрет не передается upstream-сервису.
 
 ### MVP 6 — Redis Rate Limiting
 
@@ -520,6 +557,25 @@ make compose-down
 
 Ожидаемый результат: запрос будет обработан gateway и проксирован в demo backend. Demo-backend внутри Docker Compose не публикуется наружу и доступен gateway по внутреннему DNS-имени `demo-backend`.
 
+### E2E-проверка API keys
+
+Полная проверка MVP5:
+
+```bash
+make e2e-auth-test
+```
+
+Сценарий регистрирует пользователя, получает JWT, создает защищенный маршрут и API-ключ, а затем проверяет:
+
+* отсутствие ключа возвращает `401`;
+* невалидный ключ возвращает `401`;
+* ключ другого проекта возвращает `403`;
+* корректный ключ дает доступ к Demo Backend;
+* `last_used_at` обновляется;
+* отозванный ключ снова возвращает `401`.
+
+Команда `make e2e-test` выполняет проверки MVP4 и MVP5 последовательно.
+
 ## Архитектурные решения
 
 Архитектурные решения документируются в директории `docs/adr`.
@@ -554,12 +610,10 @@ make compose-down
 
 ## Статус проекта
 
-Проект находится на начальном этапе разработки.
-
-Текущий фокус:
+Текущий реализованный этап:
 
 ```text
-MVP 4 — Dynamic Gateway Configuration
+MVP 5 — Auth Service and API Keys
 ```
 
 ## License

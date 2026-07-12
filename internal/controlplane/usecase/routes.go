@@ -8,16 +8,25 @@ import (
 )
 
 type CreateRouteInput struct {
-	ServiceID   string
-	Name        string
-	PathPrefix  string
-	StripPrefix bool
-	TimeoutMS   int
-	Enabled     bool
+	ServiceID    string
+	Name         string
+	PathPrefix   string
+	StripPrefix  bool
+	TimeoutMS    int
+	Enabled      bool
+	AuthRequired bool
 }
 
 func (u *Usecase) CreateRoute(ctx context.Context, input CreateRouteInput) (domain.Route, error) {
-	route, err := domain.NewRoute(input.ServiceID, input.Name, input.PathPrefix, input.StripPrefix, input.TimeoutMS, input.Enabled)
+	route, err := domain.NewRoute(
+		input.ServiceID,
+		input.Name,
+		input.PathPrefix,
+		input.StripPrefix,
+		input.TimeoutMS,
+		input.Enabled,
+		input.AuthRequired,
+	)
 	if err != nil {
 		return domain.Route{}, err
 	}

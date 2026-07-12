@@ -1,6 +1,6 @@
 COMPOSE := docker compose -f deployments/docker-compose.yml
 
-.PHONY: run-gateway run-demo run-control-plane run-auth compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps smoke-test e2e-test migrate-up migrate-down migrate-status test fmt tidy
+.PHONY: run-gateway run-demo run-control-plane run-auth compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps smoke-test e2e-test e2e-auth-test migrate-up migrate-down migrate-status test fmt tidy
 
 run-gateway:
 	go run ./cmd/gateway
@@ -47,6 +47,10 @@ smoke-test:
 
 e2e-test:
 	./scripts/e2e/mvp4_dynamic_routes.sh
+	./scripts/e2e/mvp5_api_key_auth.sh
+
+e2e-auth-test:
+	./scripts/e2e/mvp5_api_key_auth.sh
 
 migrate-up:
 	$(COMPOSE) run --rm migrate up
