@@ -8,4 +8,9 @@ import (
 
 type RouteRepository interface {
 	ListRoutes(ctx context.Context) ([]domain.Route, error)
+	ReplaceRoutes(routes []domain.Route)
+}
+
+type RouteSource interface {
+	ListRoutes(ctx context.Context) ([]domain.Route, error)
 }

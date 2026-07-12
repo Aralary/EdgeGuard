@@ -21,6 +21,9 @@ import (
 func Run() error {
 	log := logger.New()
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	configPath := os.Getenv("GATEWAY_CONFIG_PATH")
 	if configPath == "" {
 		configPath = "configs/gateway.yaml"
@@ -31,8 +34,25 @@ func Run() error {
 		return err
 	}
 
+	routeSource, refreshInterval, err := newRouteSourceFromEnv()
+	if err != nil {
+		return err
+	}
+
 	routeRepo := memory.NewRouteRepository(cfg.DomainRoutes())
-	gatewayUsecase := usecase.New(routeRepo)
+	gatewayUsecase := usecase.New(routeRepo, routeSource)
+
+	if routeSource != nil {
+		count, refreshErr := gatewayUsecase.RefreshRoutes(ctx)
+		if refreshErr != nil {
+			log.Warnf("initial gateway routes refresh failed, using configured fallback routes: %v", refreshErr)
+		} else {
+			log.Infof("initial gateway routes loaded: routes=%d", count)
+		}
+
+		go runRoutesRefresh(ctx, refreshInterval, gatewayUsecase, log)
+	}
+
 	upstreamProxy := proxy.NewHTTPUtilProxy()
 
 	e := echo.New()
@@ -57,9 +77,6 @@ func Run() error {
 			log.Errorf("gateway failed: %v", err)
 		}
 	}()
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	<-ctx.Done()
 
