@@ -14,4 +14,5 @@ type ControlPlaneUsecase interface {
 	ListServices(ctx context.Context, projectID string) ([]domain.Service, error)
 	CreateRoute(ctx context.Context, input usecase.CreateRouteInput) (domain.Route, error)
 	ListRoutes(ctx context.Context, serviceID string) ([]domain.Route, error)
+	ListGatewayRoutes(ctx context.Context) ([]domain.GatewayRoute, error)
 }

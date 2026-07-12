@@ -21,6 +21,8 @@ func (r fakeRouteRepository) ListRoutes(ctx context.Context) ([]domain.Route, er
 	return r.routes, nil
 }
 
+func (r fakeRouteRepository) ReplaceRoutes([]domain.Route) {}
+
 func TestUsecaseResolveRoute(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -65,7 +67,7 @@ func TestUsecaseResolveRoute(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := New(fakeRouteRepository{routes: tt.routes})
+			uc := New(fakeRouteRepository{routes: tt.routes}, nil)
 
 			got, err := uc.ResolveRoute(context.Background(), tt.path)
 			if tt.wantErr != nil {
@@ -89,7 +91,7 @@ func TestUsecaseResolveRoute(t *testing.T) {
 
 func TestUsecaseResolveRouteReturnsRepositoryError(t *testing.T) {
 	repoErr := errors.New("repository failed")
-	uc := New(fakeRouteRepository{err: repoErr})
+	uc := New(fakeRouteRepository{err: repoErr}, nil)
 
 	_, err := uc.ResolveRoute(context.Background(), "/api/v1/orders")
 	if !errors.Is(err, repoErr) {

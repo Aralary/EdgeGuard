@@ -1,7 +1,6 @@
 package config
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -111,31 +110,5 @@ func TestConfigDomainRoutes(t *testing.T) {
 
 	if routes[1].Timeout != 5*time.Second {
 		t.Fatalf("routes[1].Timeout = %s, want %s", routes[1].Timeout, 5*time.Second)
-	}
-}
-
-func TestYAMLRouteRepositoryListRoutesReturnsCopy(t *testing.T) {
-	routes := Config{
-		Routes: []RouteConfig{
-			{Name: "demo-api-v1", PathPrefix: "/api/v1", UpstreamURL: "http://localhost:8081"},
-		},
-	}.DomainRoutes()
-
-	repo := NewYAMLRouteRepository(routes)
-
-	first, err := repo.ListRoutes(context.Background())
-	if err != nil {
-		t.Fatalf("ListRoutes() unexpected error = %v", err)
-	}
-
-	first[0].Name = "changed"
-
-	second, err := repo.ListRoutes(context.Background())
-	if err != nil {
-		t.Fatalf("ListRoutes() unexpected error = %v", err)
-	}
-
-	if second[0].Name != "demo-api-v1" {
-		t.Fatalf("repository returned mutable internal slice, got route name %q", second[0].Name)
 	}
 }

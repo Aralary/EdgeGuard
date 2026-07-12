@@ -16,6 +16,9 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	api.GET("/projects/:project_id/services", h.listServices)
 	api.POST("/services/:service_id/routes", h.createRoute)
 	api.GET("/services/:service_id/routes", h.listRoutes)
+
+	internal := e.Group("/internal/v1")
+	internal.GET("/routes", h.listGatewayRoutes)
 }
 
 func (h *Handler) health(c *echo.Context) error {

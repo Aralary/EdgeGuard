@@ -1,6 +1,6 @@
 COMPOSE := docker compose -f deployments/docker-compose.yml
 
-.PHONY: run-gateway run-demo run-control-plane compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps smoke-test migrate-up migrate-down migrate-status test fmt tidy
+.PHONY: run-gateway run-demo run-control-plane compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps smoke-test e2e-test migrate-up migrate-down migrate-status test fmt tidy
 
 run-gateway:
 	go run ./cmd/gateway
@@ -33,10 +33,15 @@ compose-ps:
 	$(COMPOSE) ps -a
 
 smoke-test:
-	curl -i http://localhost:8080/health
-	curl -i http://localhost:8080/api/v1/orders
-	curl -i http://localhost:8080/api/v1/orders/ord_1
-	curl -i http://localhost:8082/health
+	curl -fsS http://localhost:8080/health
+	@echo
+	curl -fsS http://localhost:8082/health
+	@echo
+	curl -fsS http://localhost:8082/internal/v1/routes
+	@echo
+
+e2e-test:
+	./scripts/e2e/mvp4_dynamic_routes.sh
 
 migrate-up:
 	$(COMPOSE) run --rm migrate up
