@@ -206,7 +206,7 @@ edgeguard
 
 ## Локальный запуск
 
-Вся инфраструктура MVP5 запускается одной командой:
+Вся инфраструктура MVP6 запускается одной командой:
 
 ```bash
 make compose-up
@@ -221,9 +221,11 @@ migrate применяет Goose-миграции и завершается с �
         ↓
 control-plane и auth подключаются к подготовленной базе данных
         ↓
-gateway дожидается готовности control-plane, auth и demo-backend
+gateway дожидается готовности control-plane, auth, Redis и demo-backend
         ↓
 gateway загружает routes snapshot и запускает polling
+        ↓
+Redis хранит распределенные счетчики rate limit
 ```
 
 Контейнер `edgeguard-migrate` является одноразовым. Состояние `Exited (0)` после запуска — нормальное: оно означает, что миграции успешно применены.
@@ -233,6 +235,8 @@ gateway загружает routes snapshot и запускает polling
 ```text
 CONTROL_PLANE_URL=http://control-plane:8082
 AUTH_SERVICE_URL=http://auth:8083
+REDIS_URL=redis://redis:6379/0
+REDIS_RATE_LIMIT_PREFIX=edgeguard:rate-limit
 ROUTES_REFRESH_INTERVAL=10s
 ```
 
@@ -385,6 +389,39 @@ proxy request в upstream
 * Rate limit by IP
 * Rate limit by API key
 * Rate limit by route
+
+### Реализованное поведение MVP 6
+
+Политика ограничения задается на уровне маршрута через Control Plane:
+
+```json
+{
+  "rate_limit_enabled": true,
+  "rate_limit_requests": 100,
+  "rate_limit_window_seconds": 60
+}
+```
+
+Control Plane сохраняет политику в PostgreSQL и передает ее Gateway в динамическом routes snapshot. Gateway использует распределенный fixed-window счетчик в Redis:
+
+```text
+route policy
+    ↓
+route + client + fixed window
+    ↓
+atomic Lua INCR + PEXPIRE in Redis
+    ↓
+allowed request or HTTP 429
+```
+
+Идентификатор клиента выбирается так:
+
+* для публичного маршрута — прямой IP соединения;
+* для защищенного маршрута — `api_key_id`, полученный после проверки ключа в Auth Service.
+
+Разрешенные ответы содержат `X-RateLimit-Limit`, `X-RateLimit-Remaining` и `X-RateLimit-Reset`. При превышении дополнительно возвращается `Retry-After` и статус `429 Too Many Requests`.
+
+При временной недоступности Redis Gateway работает в режиме fail-open: пишет warning и продолжает проксирование, чтобы отказ дополнительного защитного механизма не остановил весь API-трафик.
 
 ### MVP 7 — Kafka Analytics
 
@@ -574,7 +611,39 @@ make e2e-auth-test
 * `last_used_at` обновляется;
 * отозванный ключ снова возвращает `401`.
 
-Команда `make e2e-test` выполняет проверки MVP4 и MVP5 последовательно.
+Эта проверка также входит в общий `make e2e-test`.
+
+### E2E-проверка Redis rate limiting
+
+Полная проверка MVP6:
+
+```bash
+make e2e-rate-limit-test
+```
+
+Тест создает уникальные публичный и защищенный маршруты с коротким fixed window и проверяет:
+
+* первые запросы проходят с `200`;
+* заголовок `X-RateLimit-Remaining` уменьшается;
+* запрос сверх лимита возвращает `429`;
+* присутствуют `Retry-After` и `X-RateLimit-Reset`;
+* после начала следующего окна запрос снова проходит;
+* для защищенного маршрута два API-ключа имеют независимые счетчики.
+
+Чтобы избежать нестабильности на границе fixed window, тест сначала читает `X-RateLimit-Reset`, дожидается нового окна и только затем выполняет точную последовательность проверок.
+
+Параметры можно переопределить:
+
+```bash
+CONTROL_PLANE_URL=http://localhost:8082 \
+AUTH_URL=http://localhost:8083 \
+GATEWAY_URL=http://localhost:8080 \
+RATE_LIMIT_WINDOW_SECONDS=5 \
+E2E_TIMEOUT_SECONDS=40 \
+make e2e-rate-limit-test
+```
+
+Команда `make e2e-test` теперь выполняет проверки MVP4, MVP5 и MVP6 последовательно.
 
 ## Архитектурные решения
 
@@ -613,7 +682,7 @@ make e2e-auth-test
 Текущий реализованный этап:
 
 ```text
-MVP 5 — Auth Service and API Keys
+MVP 6 — Redis Rate Limiting
 ```
 
 ## License
