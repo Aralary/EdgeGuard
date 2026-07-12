@@ -33,6 +33,24 @@ func authError(err error) (status int, message string, expected bool) {
 		return http.StatusUnauthorized, usecase.ErrInvalidCredentials.Error(), true
 	case errors.Is(err, usecase.ErrInvalidRefreshToken):
 		return http.StatusUnauthorized, usecase.ErrInvalidRefreshToken.Error(), true
+	case errors.Is(err, usecase.ErrInvalidAccessToken):
+		return http.StatusUnauthorized, usecase.ErrInvalidAccessToken.Error(), true
+	case errors.Is(err, usecase.ErrInvalidAPIKey):
+		return http.StatusUnauthorized, usecase.ErrInvalidAPIKey.Error(), true
+	case errors.Is(err, domain.ErrInvalidProjectID):
+		return http.StatusBadRequest, domain.ErrInvalidProjectID.Error(), true
+	case errors.Is(err, domain.ErrInvalidName):
+		return http.StatusBadRequest, domain.ErrInvalidName.Error(), true
+	case errors.Is(err, domain.ErrInvalidExpiration):
+		return http.StatusBadRequest, domain.ErrInvalidExpiration.Error(), true
+	case errors.Is(err, usecase.ErrInvalidAPIKeyID):
+		return http.StatusBadRequest, usecase.ErrInvalidAPIKeyID.Error(), true
+	case errors.Is(err, usecase.ErrAPIKeyNameAlreadyExists):
+		return http.StatusConflict, usecase.ErrAPIKeyNameAlreadyExists.Error(), true
+	case errors.Is(err, usecase.ErrProjectNotFound):
+		return http.StatusNotFound, usecase.ErrProjectNotFound.Error(), true
+	case errors.Is(err, usecase.ErrAPIKeyNotFound):
+		return http.StatusNotFound, usecase.ErrAPIKeyNotFound.Error(), true
 	case errors.Is(err, usecase.ErrUserDisabled):
 		return http.StatusForbidden, usecase.ErrUserDisabled.Error(), true
 	default:

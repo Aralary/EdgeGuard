@@ -16,10 +16,15 @@ import (
 )
 
 type authUsecaseStub struct {
-	registerFn func(context.Context, usecase.RegisterInput) (usecase.UserInfo, error)
-	loginFn    func(context.Context, usecase.LoginInput) (usecase.Session, error)
-	refreshFn  func(context.Context, usecase.RefreshInput) (usecase.TokenPair, error)
-	logoutFn   func(context.Context, usecase.LogoutInput) error
+	registerFn                func(context.Context, usecase.RegisterInput) (usecase.UserInfo, error)
+	loginFn                   func(context.Context, usecase.LoginInput) (usecase.Session, error)
+	refreshFn                 func(context.Context, usecase.RefreshInput) (usecase.TokenPair, error)
+	logoutFn                  func(context.Context, usecase.LogoutInput) error
+	authenticateAccessTokenFn func(context.Context, string) (usecase.AccessTokenPrincipal, error)
+	createAPIKeyFn            func(context.Context, usecase.CreateAPIKeyInput) (usecase.CreatedAPIKey, error)
+	listAPIKeysFn             func(context.Context, string) ([]usecase.APIKeyInfo, error)
+	revokeAPIKeyFn            func(context.Context, string, string) error
+	validateAPIKeyFn          func(context.Context, string) (usecase.APIKeyPrincipal, error)
 }
 
 func (s authUsecaseStub) Register(ctx context.Context, input usecase.RegisterInput) (usecase.UserInfo, error) {
@@ -36,6 +41,42 @@ func (s authUsecaseStub) Refresh(ctx context.Context, input usecase.RefreshInput
 
 func (s authUsecaseStub) Logout(ctx context.Context, input usecase.LogoutInput) error {
 	return s.logoutFn(ctx, input)
+}
+
+func (s authUsecaseStub) AuthenticateAccessToken(
+	ctx context.Context,
+	rawAccessToken string,
+) (usecase.AccessTokenPrincipal, error) {
+	return s.authenticateAccessTokenFn(ctx, rawAccessToken)
+}
+
+func (s authUsecaseStub) CreateAPIKey(
+	ctx context.Context,
+	input usecase.CreateAPIKeyInput,
+) (usecase.CreatedAPIKey, error) {
+	return s.createAPIKeyFn(ctx, input)
+}
+
+func (s authUsecaseStub) ListAPIKeys(
+	ctx context.Context,
+	projectID string,
+) ([]usecase.APIKeyInfo, error) {
+	return s.listAPIKeysFn(ctx, projectID)
+}
+
+func (s authUsecaseStub) RevokeAPIKey(
+	ctx context.Context,
+	projectID string,
+	apiKeyID string,
+) error {
+	return s.revokeAPIKeyFn(ctx, projectID, apiKeyID)
+}
+
+func (s authUsecaseStub) ValidateAPIKey(
+	ctx context.Context,
+	rawAPIKey string,
+) (usecase.APIKeyPrincipal, error) {
+	return s.validateAPIKeyFn(ctx, rawAPIKey)
 }
 
 type testLogger struct{}
@@ -300,6 +341,18 @@ func performRequest(
 	body string,
 ) *httptest.ResponseRecorder {
 	t.Helper()
+	return performRequestWithHeaders(t, stub, method, path, body, nil)
+}
+
+func performRequestWithHeaders(
+	t *testing.T,
+	stub authUsecaseStub,
+	method string,
+	path string,
+	body string,
+	headers map[string]string,
+) *httptest.ResponseRecorder {
+	t.Helper()
 
 	e := echo.New()
 	NewHandler(stub, testLogger{}).RegisterRoutes(e)
@@ -307,6 +360,9 @@ func performRequest(
 	request := httptest.NewRequest(method, path, strings.NewReader(body))
 	if body != "" {
 		request.Header.Set("Content-Type", "application/json")
+	}
+	for name, value := range headers {
+		request.Header.Set(name, value)
 	}
 
 	recorder := httptest.NewRecorder()

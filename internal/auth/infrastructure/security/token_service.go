@@ -39,12 +39,6 @@ type AccessTokenClaims struct {
 	jwt.RegisteredClaims
 }
 
-type ParsedAccessToken struct {
-	UserID    string
-	Role      domain.Role
-	ExpiresAt time.Time
-}
-
 type TokenService struct {
 	secret           []byte
 	issuer           string
@@ -132,10 +126,10 @@ func (s *TokenService) IssueAccessToken(
 func (s *TokenService) ParseAccessToken(
 	rawToken string,
 	now time.Time,
-) (ParsedAccessToken, error) {
+) (usecase.AccessTokenPrincipal, error) {
 	rawToken = strings.TrimSpace(rawToken)
 	if rawToken == "" || now.IsZero() {
-		return ParsedAccessToken{}, ErrInvalidAccessToken
+		return usecase.AccessTokenPrincipal{}, ErrInvalidAccessToken
 	}
 
 	claims := &AccessTokenClaims{}
@@ -159,18 +153,18 @@ func (s *TokenService) ParseAccessToken(
 		jwt.WithStrictDecoding(),
 	)
 	if err != nil {
-		return ParsedAccessToken{}, fmt.Errorf("%w: %v", ErrInvalidAccessToken, err)
+		return usecase.AccessTokenPrincipal{}, fmt.Errorf("%w: %v", ErrInvalidAccessToken, err)
 	}
 	if !token.Valid {
-		return ParsedAccessToken{}, ErrInvalidAccessToken
+		return usecase.AccessTokenPrincipal{}, ErrInvalidAccessToken
 	}
 
 	userID := strings.TrimSpace(claims.Subject)
 	if userID == "" || !claims.Role.IsValid() || claims.ExpiresAt == nil {
-		return ParsedAccessToken{}, ErrInvalidAccessToken
+		return usecase.AccessTokenPrincipal{}, ErrInvalidAccessToken
 	}
 
-	return ParsedAccessToken{
+	return usecase.AccessTokenPrincipal{
 		UserID:    userID,
 		Role:      claims.Role,
 		ExpiresAt: claims.ExpiresAt.Time,

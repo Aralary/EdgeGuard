@@ -62,6 +62,7 @@ type IssuedAccessToken struct {
 
 type TokenService interface {
 	IssueAccessToken(user domain.User, now time.Time) (IssuedAccessToken, error)
+	ParseAccessToken(rawToken string, now time.Time) (AccessTokenPrincipal, error)
 	GenerateRefreshToken() (rawToken string, tokenHash string, err error)
 	HashRefreshToken(rawToken string) string
 }

@@ -137,11 +137,13 @@ func (h *fakePasswordHasher) Matches(passwordHash string, password string) bool 
 }
 
 type fakeTokenService struct {
-	accessToken IssuedAccessToken
-	accessErr   error
-	rawToken    string
-	tokenHash   string
-	generateErr error
+	accessToken       IssuedAccessToken
+	accessErr         error
+	parsedAccessToken AccessTokenPrincipal
+	parseErr          error
+	rawToken          string
+	tokenHash         string
+	generateErr       error
 }
 
 func (s *fakeTokenService) IssueAccessToken(
@@ -153,6 +155,17 @@ func (s *fakeTokenService) IssueAccessToken(
 	}
 
 	return s.accessToken, nil
+}
+
+func (s *fakeTokenService) ParseAccessToken(
+	_ string,
+	_ time.Time,
+) (AccessTokenPrincipal, error) {
+	if s.parseErr != nil {
+		return AccessTokenPrincipal{}, s.parseErr
+	}
+
+	return s.parsedAccessToken, nil
 }
 
 func (s *fakeTokenService) GenerateRefreshToken() (string, string, error) {

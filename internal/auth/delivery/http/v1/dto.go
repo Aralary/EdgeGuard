@@ -77,3 +77,51 @@ func newSessionResponse(session usecase.Session) sessionResponse {
 		Tokens: newTokenPairResponse(session.Tokens),
 	}
 }
+
+type createAPIKeyRequest struct {
+	Name      string     `json:"name"`
+	ExpiresAt *time.Time `json:"expires_at"`
+}
+
+type apiKeyResponse struct {
+	ID         string     `json:"id"`
+	ProjectID  string     `json:"project_id"`
+	Name       string     `json:"name"`
+	KeyPrefix  string     `json:"key_prefix"`
+	Enabled    bool       `json:"enabled"`
+	ExpiresAt  *time.Time `json:"expires_at"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
+type createdAPIKeyResponse struct {
+	APIKey apiKeyResponse `json:"api_key"`
+	Value  string         `json:"value"`
+}
+
+type apiKeyPrincipalResponse struct {
+	APIKeyID  string `json:"api_key_id"`
+	ProjectID string `json:"project_id"`
+}
+
+func newAPIKeyResponse(key usecase.APIKeyInfo) apiKeyResponse {
+	return apiKeyResponse{
+		ID:         key.ID,
+		ProjectID:  key.ProjectID,
+		Name:       key.Name,
+		KeyPrefix:  key.KeyPrefix,
+		Enabled:    key.Enabled,
+		ExpiresAt:  key.ExpiresAt,
+		LastUsedAt: key.LastUsedAt,
+		CreatedAt:  key.CreatedAt,
+		UpdatedAt:  key.UpdatedAt,
+	}
+}
+
+func newCreatedAPIKeyResponse(created usecase.CreatedAPIKey) createdAPIKeyResponse {
+	return createdAPIKeyResponse{
+		APIKey: newAPIKeyResponse(created.APIKey),
+		Value:  created.Value,
+	}
+}
