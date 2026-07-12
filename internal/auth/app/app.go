@@ -54,13 +54,18 @@ func Run() error {
 		return fmt.Errorf("create token service: %w", err)
 	}
 
+	apiKeyService := security.NewAPIKeyService()
+
 	repository := authpostgres.New(pool)
 	authUsecase := usecase.New(
-		repository,
-		repository,
-		passwordHasher,
-		tokenService,
-		nil,
+		usecase.Dependencies{
+			UserRepository:         repository,
+			RefreshTokenRepository: repository,
+			APIKeyRepository:       repository,
+			PasswordHasher:         passwordHasher,
+			TokenService:           tokenService,
+			APIKeyService:          apiKeyService,
+		},
 		usecase.Config{RefreshTokenTTL: cfg.RefreshTokenTTL},
 	)
 

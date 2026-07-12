@@ -43,3 +43,26 @@ func TestIsUniqueViolation(t *testing.T) {
 		})
 	}
 }
+
+func TestIsUniqueConstraintViolation(t *testing.T) {
+	err := &pgconn.PgError{
+		Code:           uniqueViolationCode,
+		ConstraintName: apiKeyProjectNameConstraint,
+	}
+
+	if !isUniqueConstraintViolation(err, apiKeyProjectNameConstraint) {
+		t.Fatal("isUniqueConstraintViolation() = false, want true")
+	}
+	if isUniqueConstraintViolation(err, "different_constraint") {
+		t.Fatal("isUniqueConstraintViolation() = true for different constraint")
+	}
+}
+
+func TestIsForeignKeyViolation(t *testing.T) {
+	if !isForeignKeyViolation(&pgconn.PgError{Code: foreignKeyViolationCode}) {
+		t.Fatal("isForeignKeyViolation() = false, want true")
+	}
+	if isForeignKeyViolation(&pgconn.PgError{Code: uniqueViolationCode}) {
+		t.Fatal("isForeignKeyViolation() = true for unique violation")
+	}
+}

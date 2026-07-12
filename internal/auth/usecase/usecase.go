@@ -12,37 +12,45 @@ type Config struct {
 	RefreshTokenTTL time.Duration
 }
 
+type Dependencies struct {
+	UserRepository         UserRepository
+	RefreshTokenRepository RefreshTokenRepository
+	APIKeyRepository       APIKeyRepository
+	PasswordHasher         PasswordHasher
+	TokenService           TokenService
+	APIKeyService          APIKeyService
+	Clock                  Clock
+}
+
 type Usecase struct {
 	userRepository         UserRepository
 	refreshTokenRepository RefreshTokenRepository
+	apiKeyRepository       APIKeyRepository
 	passwordHasher         PasswordHasher
 	tokenService           TokenService
+	apiKeyService          APIKeyService
 	clock                  Clock
 	refreshTokenTTL        time.Duration
 }
 
-func New(
-	userRepository UserRepository,
-	refreshTokenRepository RefreshTokenRepository,
-	passwordHasher PasswordHasher,
-	tokenService TokenService,
-	clock Clock,
-	cfg Config,
-) *Usecase {
+func New(dependencies Dependencies, cfg Config) *Usecase {
 	refreshTokenTTL := cfg.RefreshTokenTTL
 	if refreshTokenTTL <= 0 {
 		refreshTokenTTL = DefaultRefreshTokenTTL
 	}
 
+	clock := dependencies.Clock
 	if clock == nil {
 		clock = systemClock{}
 	}
 
 	return &Usecase{
-		userRepository:         userRepository,
-		refreshTokenRepository: refreshTokenRepository,
-		passwordHasher:         passwordHasher,
-		tokenService:           tokenService,
+		userRepository:         dependencies.UserRepository,
+		refreshTokenRepository: dependencies.RefreshTokenRepository,
+		apiKeyRepository:       dependencies.APIKeyRepository,
+		passwordHasher:         dependencies.PasswordHasher,
+		tokenService:           dependencies.TokenService,
+		apiKeyService:          dependencies.APIKeyService,
 		clock:                  clock,
 		refreshTokenTTL:        refreshTokenTTL,
 	}

@@ -167,6 +167,23 @@ func (s *fakeTokenService) HashRefreshToken(rawToken string) string {
 	return "hash:" + rawToken
 }
 
+func newTestUsecase(
+	users UserRepository,
+	refreshTokens RefreshTokenRepository,
+	hasher PasswordHasher,
+	tokens TokenService,
+	clock Clock,
+	cfg Config,
+) *Usecase {
+	return New(Dependencies{
+		UserRepository:         users,
+		RefreshTokenRepository: refreshTokens,
+		PasswordHasher:         hasher,
+		TokenService:           tokens,
+		Clock:                  clock,
+	}, cfg)
+}
+
 type fixedClock struct {
 	now time.Time
 }
@@ -178,7 +195,7 @@ func (c fixedClock) Now() time.Time {
 func TestRegisterCreatesMemberWithHashedPassword(t *testing.T) {
 	users := &fakeUserRepository{}
 	hasher := &fakePasswordHasher{hash: "password-hash"}
-	uc := New(
+	uc := newTestUsecase(
 		users,
 		&fakeRefreshTokenRepository{},
 		hasher,
@@ -218,7 +235,7 @@ func TestRegisterCreatesMemberWithHashedPassword(t *testing.T) {
 
 func TestRegisterRejectsInvalidPasswordBeforeHashing(t *testing.T) {
 	hasher := &fakePasswordHasher{hash: "password-hash"}
-	uc := New(
+	uc := newTestUsecase(
 		&fakeUserRepository{},
 		&fakeRefreshTokenRepository{},
 		hasher,
@@ -260,7 +277,7 @@ func TestLoginCreatesSessionAndPersistsRefreshToken(t *testing.T) {
 		tokenHash:   "refresh-hash",
 	}
 
-	uc := New(users, refreshTokens, hasher, tokens, fixedClock{now: now}, Config{})
+	uc := newTestUsecase(users, refreshTokens, hasher, tokens, fixedClock{now: now}, Config{})
 
 	got, err := uc.Login(context.Background(), LoginInput{
 		Email:    " User@Example.COM ",
@@ -333,7 +350,7 @@ func TestLoginRejectsInvalidCredentials(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := New(
+			uc := newTestUsecase(
 				tt.users,
 				&fakeRefreshTokenRepository{},
 				tt.hasher,
@@ -377,7 +394,7 @@ func TestRefreshRotatesTokenAtomically(t *testing.T) {
 		tokenHash:   "new-refresh-hash",
 	}
 
-	uc := New(
+	uc := newTestUsecase(
 		users,
 		refreshTokens,
 		&fakePasswordHasher{},
@@ -436,7 +453,7 @@ func TestRefreshRejectsExpiredOrUnknownToken(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			uc := New(
+			uc := newTestUsecase(
 				&fakeUserRepository{},
 				tt.refreshTokens,
 				&fakePasswordHasher{},
@@ -460,7 +477,7 @@ func TestRefreshRejectsExpiredOrUnknownToken(t *testing.T) {
 func TestLogoutRevokesRefreshToken(t *testing.T) {
 	now := time.Date(2026, time.July, 12, 12, 0, 0, 0, time.UTC)
 	refreshTokens := &fakeRefreshTokenRepository{}
-	uc := New(
+	uc := newTestUsecase(
 		&fakeUserRepository{},
 		refreshTokens,
 		&fakePasswordHasher{},
@@ -483,7 +500,7 @@ func TestLogoutRevokesRefreshToken(t *testing.T) {
 }
 
 func TestLogoutHidesUnknownRefreshToken(t *testing.T) {
-	uc := New(
+	uc := newTestUsecase(
 		&fakeUserRepository{},
 		&fakeRefreshTokenRepository{revokeErr: ErrRefreshTokenNotFound},
 		&fakePasswordHasher{},
