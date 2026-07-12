@@ -205,7 +205,7 @@ edgeguard
 
 ## Локальный запуск
 
-Вся инфраструктура MVP3 запускается одной командой:
+Вся инфраструктура MVP4 запускается одной командой:
 
 ```bash
 make compose-up
@@ -219,9 +219,22 @@ PostgreSQL становится healthy
 migrate применяет Goose-миграции и завершается с кодом 0
         ↓
 control-plane подключается к подготовленной базе данных
+        ↓
+gateway дожидается готовности control-plane
+        ↓
+gateway загружает routes snapshot и запускает polling
 ```
 
 Контейнер `edgeguard-migrate` является одноразовым. Состояние `Exited (0)` после запуска — нормальное: оно означает, что миграции успешно применены.
+
+В Docker Compose Gateway использует Control Plane как основной источник маршрутов:
+
+```text
+CONTROL_PLANE_URL=http://control-plane:8082
+ROUTES_REFRESH_INTERVAL=10s
+```
+
+YAML-конфигурация остается стартовым fallback. Если Control Plane недоступен при запуске, Gateway продолжает работать с YAML и повторяет загрузку по таймеру. Успешный пустой snapshot (`[]`) считается валидной конфигурацией и очищает fallback-маршруты. Поэтому в новой пустой базе запросы к `/api/v1/orders` начнут работать только после создания service и route через Control Plane.
 
 Проверка состояния и API:
 
@@ -435,9 +448,11 @@ make smoke-test
 
 ```bash
 curl http://localhost:8080/health
-curl http://localhost:8080/api/v1/orders
-curl http://localhost:8080/api/v1/orders/ord_1
+curl http://localhost:8082/health
+curl http://localhost:8082/internal/v1/routes
 ```
+
+После создания маршрута через Control Plane Gateway подхватит его не позднее чем через `ROUTES_REFRESH_INTERVAL` и начнет проксировать соответствующие запросы без перезапуска.
 
 Логи контейнеров:
 

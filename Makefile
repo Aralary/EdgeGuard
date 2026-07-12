@@ -33,10 +33,12 @@ compose-ps:
 	$(COMPOSE) ps -a
 
 smoke-test:
-	curl -i http://localhost:8080/health
-	curl -i http://localhost:8080/api/v1/orders
-	curl -i http://localhost:8080/api/v1/orders/ord_1
-	curl -i http://localhost:8082/health
+	curl -fsS http://localhost:8080/health
+	@echo
+	curl -fsS http://localhost:8082/health
+	@echo
+	curl -fsS http://localhost:8082/internal/v1/routes
+	@echo
 
 migrate-up:
 	$(COMPOSE) run --rm migrate up

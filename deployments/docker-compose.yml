@@ -64,9 +64,13 @@ services:
     container_name: edgeguard-gateway
     environment:
       GATEWAY_CONFIG_PATH: /app/configs/gateway.docker.yaml
+      CONTROL_PLANE_URL: http://control-plane:8082
+      ROUTES_REFRESH_INTERVAL: 10s
     ports:
       - "8080:8080"
     depends_on:
+      control-plane:
+        condition: service_healthy
       demo-backend:
         condition: service_healthy
     healthcheck:
