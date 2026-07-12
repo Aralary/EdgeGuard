@@ -39,8 +39,13 @@ func Run() error {
 		return err
 	}
 
+	apiKeyValidator, err := newAPIKeyValidatorFromEnv()
+	if err != nil {
+		return err
+	}
+
 	routeRepo := memory.NewRouteRepository(cfg.DomainRoutes())
-	gatewayUsecase := usecase.New(routeRepo, routeSource)
+	gatewayUsecase := usecase.New(routeRepo, routeSource, apiKeyValidator)
 
 	if routeSource != nil {
 		count, refreshErr := gatewayUsecase.RefreshRoutes(ctx)

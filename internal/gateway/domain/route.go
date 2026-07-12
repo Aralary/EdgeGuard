@@ -6,11 +6,13 @@ import (
 )
 
 type Route struct {
-	Name        string
-	PathPrefix  string
-	UpstreamURL string
-	StripPrefix bool
-	Timeout     time.Duration
+	ProjectID    string
+	Name         string
+	PathPrefix   string
+	UpstreamURL  string
+	StripPrefix  bool
+	Timeout      time.Duration
+	AuthRequired bool
 }
 
 func (r Route) Matches(path string) bool {

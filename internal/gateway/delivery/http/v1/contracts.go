@@ -7,8 +7,9 @@ import (
 	"github.com/aralary/edgeguard/internal/gateway/domain"
 )
 
-type RouteResolver interface {
+type GatewayUsecase interface {
 	ResolveRoute(ctx context.Context, path string) (domain.Route, error)
+	AuthorizeRoute(ctx context.Context, route domain.Route, rawAPIKey string) error
 }
 
 type UpstreamProxy interface {

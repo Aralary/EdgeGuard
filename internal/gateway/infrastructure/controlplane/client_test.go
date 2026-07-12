@@ -27,11 +27,13 @@ func TestClientListRoutes(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`[
 			{
+				"project_id":"project-1",
 				"name":"demo-api-v1",
 				"path_prefix":"/api/v1/",
 				"upstream_url":"http://demo-backend:8081",
 				"strip_prefix":true,
-				"timeout_ms":3000
+				"timeout_ms":3000,
+				"auth_required":true
 			}
 		]`))
 	}))
@@ -52,6 +54,9 @@ func TestClientListRoutes(t *testing.T) {
 	}
 
 	route := routes[0]
+	if route.ProjectID != "project-1" {
+		t.Fatalf("route project id = %q, want %q", route.ProjectID, "project-1")
+	}
 	if route.Name != "demo-api-v1" {
 		t.Fatalf("route name = %q, want %q", route.Name, "demo-api-v1")
 	}
@@ -66,6 +71,9 @@ func TestClientListRoutes(t *testing.T) {
 	}
 	if route.Timeout != 3*time.Second {
 		t.Fatalf("route timeout = %s, want %s", route.Timeout, 3*time.Second)
+	}
+	if !route.AuthRequired {
+		t.Fatal("route auth required = false, want true")
 	}
 }
 
@@ -143,8 +151,22 @@ func TestClientListRoutesRejectsInvalidRoutes(t *testing.T) {
 		wantErrPart string
 	}{
 		{
+			name: "empty project id",
+			response: `[{
+				"project_id":"",
+				"name":"demo-api-v1",
+				"path_prefix":"/api/v1",
+				"upstream_url":"http://demo-backend:8081",
+				"strip_prefix":true,
+				"timeout_ms":3000,
+				"auth_required":true
+			}]`,
+			wantErrPart: "project_id is required",
+		},
+		{
 			name: "empty name",
 			response: `[{
+				"project_id":"project-1",
 				"name":"",
 				"path_prefix":"/api/v1",
 				"upstream_url":"http://demo-backend:8081",
@@ -156,6 +178,7 @@ func TestClientListRoutesRejectsInvalidRoutes(t *testing.T) {
 		{
 			name: "invalid path prefix",
 			response: `[{
+				"project_id":"project-1",
 				"name":"demo-api-v1",
 				"path_prefix":"api/v1",
 				"upstream_url":"http://demo-backend:8081",
@@ -167,6 +190,7 @@ func TestClientListRoutesRejectsInvalidRoutes(t *testing.T) {
 		{
 			name: "invalid upstream url",
 			response: `[{
+				"project_id":"project-1",
 				"name":"demo-api-v1",
 				"path_prefix":"/api/v1",
 				"upstream_url":"demo-backend:8081",
@@ -178,6 +202,7 @@ func TestClientListRoutesRejectsInvalidRoutes(t *testing.T) {
 		{
 			name: "invalid timeout",
 			response: `[{
+				"project_id":"project-1",
 				"name":"demo-api-v1",
 				"path_prefix":"/api/v1",
 				"upstream_url":"http://demo-backend:8081",
@@ -190,6 +215,7 @@ func TestClientListRoutesRejectsInvalidRoutes(t *testing.T) {
 			name: "duplicate normalized path prefix",
 			response: `[
 				{
+					"project_id":"project-1",
 					"name":"demo-api-v1",
 					"path_prefix":"/api/v1",
 					"upstream_url":"http://demo-backend:8081",
@@ -197,6 +223,7 @@ func TestClientListRoutesRejectsInvalidRoutes(t *testing.T) {
 					"timeout_ms":3000
 				},
 				{
+					"project_id":"project-1",
 					"name":"another-demo-api-v1",
 					"path_prefix":"/api/v1/",
 					"upstream_url":"http://demo-backend:8081",

@@ -10,11 +10,13 @@ import (
 )
 
 type routeResponse struct {
-	Name        string `json:"name"`
-	PathPrefix  string `json:"path_prefix"`
-	UpstreamURL string `json:"upstream_url"`
-	StripPrefix bool   `json:"strip_prefix"`
-	TimeoutMS   int    `json:"timeout_ms"`
+	ProjectID    string `json:"project_id"`
+	Name         string `json:"name"`
+	PathPrefix   string `json:"path_prefix"`
+	UpstreamURL  string `json:"upstream_url"`
+	StripPrefix  bool   `json:"strip_prefix"`
+	TimeoutMS    int    `json:"timeout_ms"`
+	AuthRequired bool   `json:"auth_required"`
 }
 
 func responseToDomain(response []routeResponse) ([]domain.Route, error) {
@@ -39,6 +41,11 @@ func responseToDomain(response []routeResponse) ([]domain.Route, error) {
 }
 
 func (r routeResponse) toDomain() (domain.Route, error) {
+	projectID := strings.TrimSpace(r.ProjectID)
+	if projectID == "" {
+		return domain.Route{}, fmt.Errorf("project_id is required")
+	}
+
 	name := strings.TrimSpace(r.Name)
 	if name == "" {
 		return domain.Route{}, fmt.Errorf("name is required")
@@ -64,11 +71,13 @@ func (r routeResponse) toDomain() (domain.Route, error) {
 	}
 
 	return domain.Route{
-		Name:        name,
-		PathPrefix:  pathPrefix,
-		UpstreamURL: upstreamURL,
-		StripPrefix: r.StripPrefix,
-		Timeout:     time.Duration(r.TimeoutMS) * time.Millisecond,
+		ProjectID:    projectID,
+		Name:         name,
+		PathPrefix:   pathPrefix,
+		UpstreamURL:  upstreamURL,
+		StripPrefix:  r.StripPrefix,
+		Timeout:      time.Duration(r.TimeoutMS) * time.Millisecond,
+		AuthRequired: r.AuthRequired,
 	}, nil
 }
 

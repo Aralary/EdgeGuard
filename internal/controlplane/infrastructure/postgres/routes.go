@@ -14,9 +14,10 @@ INSERT INTO routes (
     path_prefix,
     strip_prefix,
     timeout_ms,
-    enabled
+    enabled,
+    auth_required
 )
-VALUES ($1::uuid, $2, $3, $4, $5, $6)
+VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)
 RETURNING
     id::text,
     service_id::text,
@@ -25,6 +26,7 @@ RETURNING
     strip_prefix,
     timeout_ms,
     enabled,
+    auth_required,
     created_at,
     updated_at
 `
@@ -41,6 +43,7 @@ func (r *Repository) CreateRoute(ctx context.Context, route domain.Route) (domai
 		route.StripPrefix,
 		route.TimeoutMS,
 		route.Enabled,
+		route.AuthRequired,
 	).Scan(
 		&created.ID,
 		&created.ServiceID,
@@ -49,6 +52,7 @@ func (r *Repository) CreateRoute(ctx context.Context, route domain.Route) (domai
 		&created.StripPrefix,
 		&created.TimeoutMS,
 		&created.Enabled,
+		&created.AuthRequired,
 		&created.CreatedAt,
 		&created.UpdatedAt,
 	)
@@ -68,6 +72,7 @@ SELECT
     strip_prefix,
     timeout_ms,
     enabled,
+    auth_required,
     created_at,
     updated_at
 FROM routes
@@ -95,6 +100,7 @@ func (r *Repository) ListRoutesByServiceID(ctx context.Context, serviceID string
 			&route.StripPrefix,
 			&route.TimeoutMS,
 			&route.Enabled,
+			&route.AuthRequired,
 			&route.CreatedAt,
 			&route.UpdatedAt,
 		); err != nil {
@@ -113,11 +119,13 @@ func (r *Repository) ListRoutesByServiceID(ctx context.Context, serviceID string
 
 const listGatewayRoutesQuery = `
 SELECT
+    services.project_id::text,
     routes.name,
     routes.path_prefix,
     services.upstream_url,
     routes.strip_prefix,
-    routes.timeout_ms
+    routes.timeout_ms,
+    routes.auth_required
 FROM routes
 JOIN services ON services.id = routes.service_id
 WHERE routes.enabled = TRUE
@@ -137,11 +145,13 @@ func (r *Repository) ListGatewayRoutes(ctx context.Context) ([]domain.GatewayRou
 		var route domain.GatewayRoute
 
 		if err := rows.Scan(
+			&route.ProjectID,
 			&route.Name,
 			&route.PathPrefix,
 			&route.UpstreamURL,
 			&route.StripPrefix,
 			&route.TimeoutMS,
+			&route.AuthRequired,
 		); err != nil {
 			return nil, fmt.Errorf("scan gateway route: %w", err)
 		}

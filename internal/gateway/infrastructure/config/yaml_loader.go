@@ -18,11 +18,13 @@ type HTTPConfig struct {
 }
 
 type RouteConfig struct {
-	Name        string `yaml:"name"`
-	PathPrefix  string `yaml:"path_prefix"`
-	UpstreamURL string `yaml:"upstream_url"`
-	StripPrefix bool   `yaml:"strip_prefix"`
-	TimeoutMS   int    `yaml:"timeout_ms"`
+	ProjectID    string `yaml:"project_id"`
+	Name         string `yaml:"name"`
+	PathPrefix   string `yaml:"path_prefix"`
+	UpstreamURL  string `yaml:"upstream_url"`
+	StripPrefix  bool   `yaml:"strip_prefix"`
+	TimeoutMS    int    `yaml:"timeout_ms"`
+	AuthRequired bool   `yaml:"auth_required"`
 }
 
 func Load(path string) (Config, error) {
@@ -53,11 +55,13 @@ func (c Config) DomainRoutes() []domain.Route {
 		}
 
 		routes = append(routes, domain.Route{
-			Name:        route.Name,
-			PathPrefix:  route.PathPrefix,
-			UpstreamURL: route.UpstreamURL,
-			StripPrefix: route.StripPrefix,
-			Timeout:     timeout,
+			ProjectID:    route.ProjectID,
+			Name:         route.Name,
+			PathPrefix:   route.PathPrefix,
+			UpstreamURL:  route.UpstreamURL,
+			StripPrefix:  route.StripPrefix,
+			Timeout:      timeout,
+			AuthRequired: route.AuthRequired,
 		})
 	}
 
