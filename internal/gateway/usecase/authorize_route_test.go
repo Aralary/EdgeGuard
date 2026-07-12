@@ -24,11 +24,14 @@ func (v *fakeAPIKeyValidator) ValidateAPIKey(
 
 func TestAuthorizeRouteAllowsPublicRoute(t *testing.T) {
 	validator := &fakeAPIKeyValidator{err: errors.New("must not be called")}
-	uc := New(fakeRouteRepository{}, nil, validator)
+	uc := New(fakeRouteRepository{}, nil, validator, nil)
 
-	err := uc.AuthorizeRoute(context.Background(), domain.Route{AuthRequired: false}, "")
+	principal, err := uc.AuthorizeRoute(context.Background(), domain.Route{AuthRequired: false}, "")
 	if err != nil {
 		t.Fatalf("AuthorizeRoute() error = %v", err)
+	}
+	if principal != (domain.APIKeyPrincipal{}) {
+		t.Fatalf("principal = %+v, want zero value", principal)
 	}
 	if validator.calls != 0 {
 		t.Fatalf("validator calls = %d, want 0", validator.calls)
@@ -36,9 +39,9 @@ func TestAuthorizeRouteAllowsPublicRoute(t *testing.T) {
 }
 
 func TestAuthorizeRouteRequiresAPIKey(t *testing.T) {
-	uc := New(fakeRouteRepository{}, nil, &fakeAPIKeyValidator{})
+	uc := New(fakeRouteRepository{}, nil, &fakeAPIKeyValidator{}, nil)
 
-	err := uc.AuthorizeRoute(context.Background(), domain.Route{AuthRequired: true}, " ")
+	_, err := uc.AuthorizeRoute(context.Background(), domain.Route{AuthRequired: true}, " ")
 	if !errors.Is(err, domain.ErrAPIKeyRequired) {
 		t.Fatalf("error = %v, want ErrAPIKeyRequired", err)
 	}
@@ -48,14 +51,17 @@ func TestAuthorizeRouteAllowsMatchingProject(t *testing.T) {
 	validator := &fakeAPIKeyValidator{
 		principal: domain.APIKeyPrincipal{APIKeyID: "key-1", ProjectID: "project-1"},
 	}
-	uc := New(fakeRouteRepository{}, nil, validator)
+	uc := New(fakeRouteRepository{}, nil, validator, nil)
 
-	err := uc.AuthorizeRoute(context.Background(), domain.Route{
+	principal, err := uc.AuthorizeRoute(context.Background(), domain.Route{
 		ProjectID:    "project-1",
 		AuthRequired: true,
 	}, "eg_live_key")
 	if err != nil {
 		t.Fatalf("AuthorizeRoute() error = %v", err)
+	}
+	if principal != validator.principal {
+		t.Fatalf("principal = %+v, want %+v", principal, validator.principal)
 	}
 }
 
@@ -63,9 +69,9 @@ func TestAuthorizeRouteRejectsDifferentProject(t *testing.T) {
 	validator := &fakeAPIKeyValidator{
 		principal: domain.APIKeyPrincipal{APIKeyID: "key-1", ProjectID: "project-2"},
 	}
-	uc := New(fakeRouteRepository{}, nil, validator)
+	uc := New(fakeRouteRepository{}, nil, validator, nil)
 
-	err := uc.AuthorizeRoute(context.Background(), domain.Route{
+	_, err := uc.AuthorizeRoute(context.Background(), domain.Route{
 		ProjectID:    "project-1",
 		AuthRequired: true,
 	}, "eg_live_key")
@@ -76,9 +82,9 @@ func TestAuthorizeRouteRejectsDifferentProject(t *testing.T) {
 
 func TestAuthorizeRoutePropagatesInvalidKey(t *testing.T) {
 	validator := &fakeAPIKeyValidator{err: domain.ErrInvalidAPIKey}
-	uc := New(fakeRouteRepository{}, nil, validator)
+	uc := New(fakeRouteRepository{}, nil, validator, nil)
 
-	err := uc.AuthorizeRoute(context.Background(), domain.Route{
+	_, err := uc.AuthorizeRoute(context.Background(), domain.Route{
 		ProjectID:    "project-1",
 		AuthRequired: true,
 	}, "invalid")
@@ -88,9 +94,9 @@ func TestAuthorizeRoutePropagatesInvalidKey(t *testing.T) {
 }
 
 func TestAuthorizeRouteFailsClosedWithoutValidator(t *testing.T) {
-	uc := New(fakeRouteRepository{}, nil, nil)
+	uc := New(fakeRouteRepository{}, nil, nil, nil)
 
-	err := uc.AuthorizeRoute(context.Background(), domain.Route{
+	_, err := uc.AuthorizeRoute(context.Background(), domain.Route{
 		ProjectID:    "project-1",
 		AuthRequired: true,
 	}, "eg_live_key")

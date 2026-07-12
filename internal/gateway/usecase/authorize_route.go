@@ -12,31 +12,31 @@ func (u *Usecase) AuthorizeRoute(
 	ctx context.Context,
 	route domain.Route,
 	rawAPIKey string,
-) error {
+) (domain.APIKeyPrincipal, error) {
 	if !route.AuthRequired {
-		return nil
+		return domain.APIKeyPrincipal{}, nil
 	}
 
 	if strings.TrimSpace(rawAPIKey) == "" {
-		return domain.ErrAPIKeyRequired
+		return domain.APIKeyPrincipal{}, domain.ErrAPIKeyRequired
 	}
 
 	if u.apiKeyValidator == nil {
-		return domain.ErrAPIKeyValidatorNotConfigured
+		return domain.APIKeyPrincipal{}, domain.ErrAPIKeyValidatorNotConfigured
 	}
 
 	principal, err := u.apiKeyValidator.ValidateAPIKey(ctx, rawAPIKey)
 	if err != nil {
 		if errors.Is(err, domain.ErrInvalidAPIKey) {
-			return domain.ErrInvalidAPIKey
+			return domain.APIKeyPrincipal{}, domain.ErrInvalidAPIKey
 		}
 
-		return err
+		return domain.APIKeyPrincipal{}, err
 	}
 
 	if principal.ProjectID != route.ProjectID {
-		return domain.ErrAPIKeyProjectMismatch
+		return domain.APIKeyPrincipal{}, domain.ErrAPIKeyProjectMismatch
 	}
 
-	return nil
+	return principal, nil
 }

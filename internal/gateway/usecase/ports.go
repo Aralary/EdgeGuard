@@ -18,3 +18,7 @@ type RouteSource interface {
 type APIKeyValidator interface {
 	ValidateAPIKey(ctx context.Context, rawAPIKey string) (domain.APIKeyPrincipal, error)
 }
+
+type RateLimiter interface {
+	Allow(ctx context.Context, request domain.RateLimitRequest) (domain.RateLimitResult, error)
+}

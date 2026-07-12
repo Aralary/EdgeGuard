@@ -90,6 +90,17 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  redis:
+    image: redis:8.4-alpine
+    container_name: edgeguard-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
   gateway:
     build:
       context: ..
@@ -99,6 +110,8 @@ services:
       GATEWAY_CONFIG_PATH: /app/configs/gateway.docker.yaml
       CONTROL_PLANE_URL: http://control-plane:8082
       AUTH_SERVICE_URL: http://auth:8083
+      REDIS_URL: redis://redis:6379/0
+      REDIS_RATE_LIMIT_PREFIX: edgeguard:rate-limit
       ROUTES_REFRESH_INTERVAL: 10s
     ports:
       - "8080:8080"
@@ -106,6 +119,8 @@ services:
       control-plane:
         condition: service_healthy
       auth:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       demo-backend:
         condition: service_healthy
