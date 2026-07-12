@@ -8,14 +8,51 @@ services:
       POSTGRES_USER: edgeguard
       POSTGRES_PASSWORD: edgeguard
       POSTGRES_DB: edgeguard
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U edgeguard -d edgeguard"]
       interval: 10s
       timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: deployments/docker/migrations.Dockerfile
+    container_name: edgeguard-migrate
+    environment:
+      GOOSE_DBSTRING: postgres://edgeguard:edgeguard@postgres:5432/edgeguard?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["up"]
+    restart: "no"
+
+  control-plane:
+    build:
+      context: ..
+      dockerfile: deployments/docker/control-plane.Dockerfile
+    container_name: edgeguard-control-plane
+    environment:
+      CONTROL_PLANE_HTTP_ADDR: ":8082"
+      POSTGRES_DSN: postgres://edgeguard:edgeguard@postgres:5432/edgeguard?sslmode=disable
+      POSTGRES_MAX_CONNS: "10"
+      POSTGRES_MIN_CONNS: "1"
+      POSTGRES_MAX_CONN_LIFETIME_SECONDS: "300"
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 3s
       retries: 5
       start_period: 5s
     restart: unless-stopped
@@ -54,3 +91,6 @@ services:
       retries: 5
       start_period: 5s
     restart: unless-stopped
+
+volumes:
+  postgres_data:
