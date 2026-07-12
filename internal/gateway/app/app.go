@@ -10,6 +10,7 @@ import (
 
 	httpdelivery "github.com/aralary/edgeguard/internal/gateway/delivery/http/v1"
 	"github.com/aralary/edgeguard/internal/gateway/infrastructure/config"
+	"github.com/aralary/edgeguard/internal/gateway/infrastructure/memory"
 	"github.com/aralary/edgeguard/internal/gateway/infrastructure/proxy"
 	"github.com/aralary/edgeguard/internal/gateway/usecase"
 	"github.com/aralary/edgeguard/internal/platform/logger"
@@ -30,7 +31,7 @@ func Run() error {
 		return err
 	}
 
-	routeRepo := config.NewYAMLRouteRepository(cfg.DomainRoutes())
+	routeRepo := memory.NewRouteRepository(cfg.DomainRoutes())
 	gatewayUsecase := usecase.New(routeRepo)
 	upstreamProxy := proxy.NewHTTPUtilProxy()
 

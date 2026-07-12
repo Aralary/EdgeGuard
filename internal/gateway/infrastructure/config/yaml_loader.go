@@ -1,7 +1,6 @@
 package config
 
 import (
-	"context"
 	"os"
 	"time"
 
@@ -63,21 +62,4 @@ func (c Config) DomainRoutes() []domain.Route {
 	}
 
 	return routes
-}
-
-type YAMLRouteRepository struct {
-	routes []domain.Route
-}
-
-func NewYAMLRouteRepository(routes []domain.Route) *YAMLRouteRepository {
-	return &YAMLRouteRepository{
-		routes: routes,
-	}
-}
-
-func (r *YAMLRouteRepository) ListRoutes(ctx context.Context) ([]domain.Route, error) {
-	result := make([]domain.Route, len(r.routes))
-	copy(result, r.routes)
-
-	return result, nil
 }
