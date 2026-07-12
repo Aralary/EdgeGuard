@@ -33,7 +33,10 @@ func TestClientListRoutes(t *testing.T) {
 				"upstream_url":"http://demo-backend:8081",
 				"strip_prefix":true,
 				"timeout_ms":3000,
-				"auth_required":true
+				"auth_required":true,
+				"rate_limit_enabled":true,
+				"rate_limit_requests":100,
+				"rate_limit_window_seconds":60
 			}
 		]`))
 	}))
@@ -74,6 +77,9 @@ func TestClientListRoutes(t *testing.T) {
 	}
 	if !route.AuthRequired {
 		t.Fatal("route auth required = false, want true")
+	}
+	if !route.RateLimit.Enabled || route.RateLimit.Limit != 100 || route.RateLimit.Window != time.Minute {
+		t.Fatalf("route rate limit = %#v, want 100 requests per minute", route.RateLimit)
 	}
 }
 
@@ -210,6 +216,36 @@ func TestClientListRoutesRejectsInvalidRoutes(t *testing.T) {
 				"timeout_ms":0
 			}]`,
 			wantErrPart: "timeout_ms must be greater than zero",
+		},
+		{
+			name: "enabled rate limit without requests",
+			response: `[{
+				"project_id":"project-1",
+				"name":"demo-api-v1",
+				"path_prefix":"/api/v1",
+				"upstream_url":"http://demo-backend:8081",
+				"strip_prefix":true,
+				"timeout_ms":3000,
+				"rate_limit_enabled":true,
+				"rate_limit_requests":0,
+				"rate_limit_window_seconds":60
+			}]`,
+			wantErrPart: "rate_limit_requests must be greater than zero",
+		},
+		{
+			name: "disabled rate limit with non-zero values",
+			response: `[{
+				"project_id":"project-1",
+				"name":"demo-api-v1",
+				"path_prefix":"/api/v1",
+				"upstream_url":"http://demo-backend:8081",
+				"strip_prefix":true,
+				"timeout_ms":3000,
+				"rate_limit_enabled":false,
+				"rate_limit_requests":100,
+				"rate_limit_window_seconds":60
+			}]`,
+			wantErrPart: "disabled rate limit must have zero requests and window",
 		},
 		{
 			name: "duplicate normalized path prefix",

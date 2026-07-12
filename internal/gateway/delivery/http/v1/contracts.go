@@ -9,7 +9,16 @@ import (
 
 type GatewayUsecase interface {
 	ResolveRoute(ctx context.Context, path string) (domain.Route, error)
-	AuthorizeRoute(ctx context.Context, route domain.Route, rawAPIKey string) error
+	AuthorizeRoute(
+		ctx context.Context,
+		route domain.Route,
+		rawAPIKey string,
+	) (domain.APIKeyPrincipal, error)
+	CheckRateLimit(
+		ctx context.Context,
+		route domain.Route,
+		clientID string,
+	) (domain.RateLimitResult, error)
 }
 
 type UpstreamProxy interface {

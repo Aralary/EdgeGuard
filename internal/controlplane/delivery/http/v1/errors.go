@@ -22,5 +22,7 @@ func isValidationError(err error) bool {
 		errors.Is(err, domain.ErrInvalidProjectID) ||
 		errors.Is(err, domain.ErrInvalidServiceID) ||
 		errors.Is(err, domain.ErrInvalidUpstreamURL) ||
-		errors.Is(err, domain.ErrInvalidPathPrefix)
+		errors.Is(err, domain.ErrInvalidPathPrefix) ||
+		errors.Is(err, domain.ErrInvalidRateLimitRequests) ||
+		errors.Is(err, domain.ErrInvalidRateLimitWindow)
 }

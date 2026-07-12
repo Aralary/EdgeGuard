@@ -13,6 +13,7 @@ type Route struct {
 	StripPrefix  bool
 	Timeout      time.Duration
 	AuthRequired bool
+	RateLimit    RateLimitPolicy
 }
 
 func (r Route) Matches(path string) bool {

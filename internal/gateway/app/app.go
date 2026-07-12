@@ -3,16 +3,20 @@ package app
 import (
 	"context"
 	"net/http"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	gatewayconfig "github.com/aralary/edgeguard/internal/gateway/config"
 	httpdelivery "github.com/aralary/edgeguard/internal/gateway/delivery/http/v1"
-	"github.com/aralary/edgeguard/internal/gateway/infrastructure/config"
+	authclient "github.com/aralary/edgeguard/internal/gateway/infrastructure/auth"
+	yamlconfig "github.com/aralary/edgeguard/internal/gateway/infrastructure/config"
+	"github.com/aralary/edgeguard/internal/gateway/infrastructure/controlplane"
 	"github.com/aralary/edgeguard/internal/gateway/infrastructure/memory"
 	"github.com/aralary/edgeguard/internal/gateway/infrastructure/proxy"
+	"github.com/aralary/edgeguard/internal/gateway/infrastructure/ratelimit"
 	"github.com/aralary/edgeguard/internal/gateway/usecase"
+	"github.com/aralary/edgeguard/internal/gateway/worker"
 	"github.com/aralary/edgeguard/internal/platform/logger"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
@@ -24,28 +28,46 @@ func Run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	configPath := os.Getenv("GATEWAY_CONFIG_PATH")
-	if configPath == "" {
-		configPath = "configs/gateway.yaml"
-	}
-
-	cfg, err := config.Load(configPath)
+	runtimeConfig, err := gatewayconfig.Load()
 	if err != nil {
 		return err
 	}
 
-	routeSource, refreshInterval, err := newRouteSourceFromEnv()
+	gatewayYAMLConfig, err := yamlconfig.Load(runtimeConfig.ConfigPath)
 	if err != nil {
 		return err
 	}
 
-	apiKeyValidator, err := newAPIKeyValidatorFromEnv()
-	if err != nil {
-		return err
+	var routeSource usecase.RouteSource
+	if runtimeConfig.ControlPlaneURL != "" {
+		routeSource, err = controlplane.New(runtimeConfig.ControlPlaneURL, nil)
+		if err != nil {
+			return err
+		}
 	}
 
-	routeRepo := memory.NewRouteRepository(cfg.DomainRoutes())
-	gatewayUsecase := usecase.New(routeRepo, routeSource, apiKeyValidator)
+	var apiKeyValidator usecase.APIKeyValidator
+	if runtimeConfig.AuthServiceURL != "" {
+		apiKeyValidator, err = authclient.New(runtimeConfig.AuthServiceURL, nil)
+		if err != nil {
+			return err
+		}
+	}
+
+	var rateLimiter *ratelimit.Limiter
+	if runtimeConfig.RedisURL != "" {
+		rateLimiter, err = ratelimit.New(
+			runtimeConfig.RedisURL,
+			runtimeConfig.RedisRateLimitPrefix,
+		)
+		if err != nil {
+			return err
+		}
+		defer rateLimiter.Close()
+	}
+
+	routeRepository := memory.NewRouteRepository(gatewayYAMLConfig.DomainRoutes())
+	gatewayUsecase := usecase.New(routeRepository, routeSource, apiKeyValidator, rateLimiter)
 
 	if routeSource != nil {
 		count, refreshErr := gatewayUsecase.RefreshRoutes(ctx)
@@ -55,7 +77,12 @@ func Run() error {
 			log.Infof("initial gateway routes loaded: routes=%d", count)
 		}
 
-		go runRoutesRefresh(ctx, refreshInterval, gatewayUsecase, log)
+		go worker.RunRoutesRefresh(
+			ctx,
+			runtimeConfig.RoutesRefreshInterval,
+			gatewayUsecase,
+			log,
+		)
 	}
 
 	upstreamProxy := proxy.NewHTTPUtilProxy()
@@ -70,7 +97,7 @@ func Run() error {
 	handler.RegisterRoutes(e)
 
 	server := &http.Server{
-		Addr:              cfg.HTTP.Addr,
+		Addr:              gatewayYAMLConfig.HTTP.Addr,
 		Handler:           e,
 		ReadHeaderTimeout: 5 * time.Second,
 	}

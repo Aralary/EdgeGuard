@@ -10,13 +10,16 @@ import (
 )
 
 type routeResponse struct {
-	ProjectID    string `json:"project_id"`
-	Name         string `json:"name"`
-	PathPrefix   string `json:"path_prefix"`
-	UpstreamURL  string `json:"upstream_url"`
-	StripPrefix  bool   `json:"strip_prefix"`
-	TimeoutMS    int    `json:"timeout_ms"`
-	AuthRequired bool   `json:"auth_required"`
+	ProjectID              string `json:"project_id"`
+	Name                   string `json:"name"`
+	PathPrefix             string `json:"path_prefix"`
+	UpstreamURL            string `json:"upstream_url"`
+	StripPrefix            bool   `json:"strip_prefix"`
+	TimeoutMS              int    `json:"timeout_ms"`
+	AuthRequired           bool   `json:"auth_required"`
+	RateLimitEnabled       bool   `json:"rate_limit_enabled"`
+	RateLimitRequests      int    `json:"rate_limit_requests"`
+	RateLimitWindowSeconds int    `json:"rate_limit_window_seconds"`
 }
 
 func responseToDomain(response []routeResponse) ([]domain.Route, error) {
@@ -70,6 +73,11 @@ func (r routeResponse) toDomain() (domain.Route, error) {
 		return domain.Route{}, fmt.Errorf("timeout_ms must be greater than zero")
 	}
 
+	rateLimit, err := r.toRateLimitPolicy()
+	if err != nil {
+		return domain.Route{}, err
+	}
+
 	return domain.Route{
 		ProjectID:    projectID,
 		Name:         name,
@@ -78,6 +86,31 @@ func (r routeResponse) toDomain() (domain.Route, error) {
 		StripPrefix:  r.StripPrefix,
 		Timeout:      time.Duration(r.TimeoutMS) * time.Millisecond,
 		AuthRequired: r.AuthRequired,
+		RateLimit:    rateLimit,
+	}, nil
+}
+
+func (r routeResponse) toRateLimitPolicy() (domain.RateLimitPolicy, error) {
+	if !r.RateLimitEnabled {
+		if r.RateLimitRequests != 0 || r.RateLimitWindowSeconds != 0 {
+			return domain.RateLimitPolicy{}, fmt.Errorf("disabled rate limit must have zero requests and window")
+		}
+
+		return domain.RateLimitPolicy{}, nil
+	}
+
+	if r.RateLimitRequests <= 0 {
+		return domain.RateLimitPolicy{}, fmt.Errorf("rate_limit_requests must be greater than zero")
+	}
+
+	if r.RateLimitWindowSeconds <= 0 {
+		return domain.RateLimitPolicy{}, fmt.Errorf("rate_limit_window_seconds must be greater than zero")
+	}
+
+	return domain.RateLimitPolicy{
+		Enabled: true,
+		Limit:   r.RateLimitRequests,
+		Window:  time.Duration(r.RateLimitWindowSeconds) * time.Second,
 	}, nil
 }
 

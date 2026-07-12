@@ -10,4 +10,7 @@ var (
 	ErrAPIKeyProjectMismatch        = errors.New("api key is not allowed for this route")
 	ErrAuthServiceUnavailable       = errors.New("auth service unavailable")
 	ErrAPIKeyValidatorNotConfigured = errors.New("api key validator is not configured")
+	ErrRateLimiterNotConfigured     = errors.New("rate limiter is not configured")
+	ErrInvalidRateLimitPolicy       = errors.New("invalid rate limit policy")
+	ErrInvalidRateLimitClient       = errors.New("invalid rate limit client")
 )

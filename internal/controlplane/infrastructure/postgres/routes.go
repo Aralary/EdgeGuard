@@ -15,9 +15,12 @@ INSERT INTO routes (
     strip_prefix,
     timeout_ms,
     enabled,
-    auth_required
+    auth_required,
+    rate_limit_enabled,
+    rate_limit_requests,
+    rate_limit_window_seconds
 )
-VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)
+VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 RETURNING
     id::text,
     service_id::text,
@@ -27,6 +30,9 @@ RETURNING
     timeout_ms,
     enabled,
     auth_required,
+    rate_limit_enabled,
+    rate_limit_requests,
+    rate_limit_window_seconds,
     created_at,
     updated_at
 `
@@ -44,6 +50,9 @@ func (r *Repository) CreateRoute(ctx context.Context, route domain.Route) (domai
 		route.TimeoutMS,
 		route.Enabled,
 		route.AuthRequired,
+		route.RateLimit.Enabled,
+		route.RateLimit.Requests,
+		route.RateLimit.WindowSeconds,
 	).Scan(
 		&created.ID,
 		&created.ServiceID,
@@ -53,6 +62,9 @@ func (r *Repository) CreateRoute(ctx context.Context, route domain.Route) (domai
 		&created.TimeoutMS,
 		&created.Enabled,
 		&created.AuthRequired,
+		&created.RateLimit.Enabled,
+		&created.RateLimit.Requests,
+		&created.RateLimit.WindowSeconds,
 		&created.CreatedAt,
 		&created.UpdatedAt,
 	)
@@ -73,6 +85,9 @@ SELECT
     timeout_ms,
     enabled,
     auth_required,
+    rate_limit_enabled,
+    rate_limit_requests,
+    rate_limit_window_seconds,
     created_at,
     updated_at
 FROM routes
@@ -101,6 +116,9 @@ func (r *Repository) ListRoutesByServiceID(ctx context.Context, serviceID string
 			&route.TimeoutMS,
 			&route.Enabled,
 			&route.AuthRequired,
+			&route.RateLimit.Enabled,
+			&route.RateLimit.Requests,
+			&route.RateLimit.WindowSeconds,
 			&route.CreatedAt,
 			&route.UpdatedAt,
 		); err != nil {
@@ -125,7 +143,10 @@ SELECT
     services.upstream_url,
     routes.strip_prefix,
     routes.timeout_ms,
-    routes.auth_required
+    routes.auth_required,
+    routes.rate_limit_enabled,
+    routes.rate_limit_requests,
+    routes.rate_limit_window_seconds
 FROM routes
 JOIN services ON services.id = routes.service_id
 WHERE routes.enabled = TRUE
@@ -152,6 +173,9 @@ func (r *Repository) ListGatewayRoutes(ctx context.Context) ([]domain.GatewayRou
 			&route.StripPrefix,
 			&route.TimeoutMS,
 			&route.AuthRequired,
+			&route.RateLimit.Enabled,
+			&route.RateLimit.Requests,
+			&route.RateLimit.WindowSeconds,
 		); err != nil {
 			return nil, fmt.Errorf("scan gateway route: %w", err)
 		}
