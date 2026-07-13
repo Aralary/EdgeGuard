@@ -191,6 +191,32 @@ services:
         exit 1
     restart: "no"
 
+  analytics-worker:
+    build:
+      context: ..
+      dockerfile: deployments/docker/analytics-worker.Dockerfile
+    container_name: edgeguard-analytics-worker
+    environment:
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_ACCESS_TOPIC: edgeguard.gateway.access.v1
+      ANALYTICS_KAFKA_GROUP: edgeguard-analytics-v1
+      ANALYTICS_KAFKA_CLIENT_ID: edgeguard-analytics-worker
+      ANALYTICS_RETRY_MIN: 1s
+      ANALYTICS_RETRY_MAX: 30s
+      ANALYTICS_MAX_PROCESS_ATTEMPTS: "5"
+      POSTGRES_DSN: postgres://edgeguard:edgeguard@postgres:5432/edgeguard?sslmode=disable
+      POSTGRES_MAX_CONNS: "5"
+      POSTGRES_MIN_CONNS: "1"
+      POSTGRES_MAX_CONN_LIFETIME_SECONDS: "300"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      kafka-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
   gateway:
     build:
       context: ..

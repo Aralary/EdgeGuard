@@ -1,6 +1,7 @@
 package events
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -48,6 +49,9 @@ func (e GatewayAccessEvent) Validate() error {
 	if strings.TrimSpace(e.RequestID) == "" {
 		return errors.New("gateway access event request_id is required")
 	}
+	if projectID := strings.TrimSpace(e.ProjectID); projectID != "" && !isCanonicalUUID(projectID) {
+		return fmt.Errorf("invalid gateway access event project_id: %q", projectID)
+	}
 	if strings.TrimSpace(e.Method) == "" {
 		return errors.New("gateway access event method is required")
 	}
@@ -71,4 +75,18 @@ func (e GatewayAccessEvent) Validate() error {
 	}
 
 	return nil
+}
+
+func isCanonicalUUID(value string) bool {
+	if len(value) != 36 || value[8] != '-' || value[13] != '-' || value[18] != '-' || value[23] != '-' {
+		return false
+	}
+
+	compact := strings.ReplaceAll(value, "-", "")
+	if len(compact) != 32 {
+		return false
+	}
+
+	_, err := hex.DecodeString(compact)
+	return err == nil
 }

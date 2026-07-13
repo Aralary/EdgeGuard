@@ -1,6 +1,6 @@
 COMPOSE := docker compose -f deployments/docker-compose.yml
 
-.PHONY: run-gateway run-demo run-control-plane run-auth compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps smoke-test e2e-test e2e-auth-test e2e-rate-limit-test migrate-up migrate-down migrate-status test fmt tidy
+.PHONY: run-gateway run-demo run-control-plane run-auth run-analytics compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps smoke-test e2e-test e2e-auth-test e2e-rate-limit-test migrate-up migrate-down migrate-status test fmt tidy
 
 run-gateway:
 	go run ./cmd/gateway
@@ -13,6 +13,9 @@ run-control-plane:
 
 run-auth:
 	go run ./cmd/auth
+
+run-analytics:
+	go run ./cmd/analytics-worker
 
 compose-build:
 	$(COMPOSE) build

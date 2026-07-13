@@ -32,3 +32,22 @@ func TestGatewayAccessEventValidateRejectsUnsupportedSchema(t *testing.T) {
 		t.Fatal("Validate() error = nil, want error")
 	}
 }
+
+func TestGatewayAccessEventValidateRejectsInvalidProjectID(t *testing.T) {
+	event := GatewayAccessEvent{
+		SchemaVersion: GatewayAccessEventSchemaVersion,
+		EventID:       "event-1",
+		OccurredAt:    time.Now().UTC(),
+		RequestID:     "request-1",
+		ProjectID:     "not-a-uuid",
+		Method:        "GET",
+		RequestPath:   "/api/orders",
+		StatusCode:    200,
+		ClientType:    ClientTypeIP,
+		ClientID:      "hashed-ip",
+	}
+
+	if err := event.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want error")
+	}
+}
