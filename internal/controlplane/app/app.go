@@ -12,6 +12,11 @@ import (
 	httpdelivery "github.com/aralary/edgeguard/internal/controlplane/delivery/http/v1"
 	controlpostgres "github.com/aralary/edgeguard/internal/controlplane/infrastructure/postgres"
 	"github.com/aralary/edgeguard/internal/controlplane/usecase"
+	jobsconfig "github.com/aralary/edgeguard/internal/jobs/config"
+	jobshttp "github.com/aralary/edgeguard/internal/jobs/delivery/http/v1"
+	jobid "github.com/aralary/edgeguard/internal/jobs/infrastructure/id"
+	jobsrabbitmq "github.com/aralary/edgeguard/internal/jobs/infrastructure/rabbitmq"
+	jobsusecase "github.com/aralary/edgeguard/internal/jobs/usecase"
 	"github.com/aralary/edgeguard/internal/platform/logger"
 	platformpostgres "github.com/aralary/edgeguard/internal/platform/postgres"
 	"github.com/labstack/echo/v5"
@@ -37,11 +42,35 @@ func Run() error {
 	repository := controlpostgres.New(pool)
 	controlPlaneUsecase := usecase.New(repository, repository, repository)
 
+	jobsRuntimeConfig, err := jobsconfig.Load()
+	if err != nil {
+		return fmt.Errorf("load jobs config: %w", err)
+	}
+
+	jobPublisher, err := jobsrabbitmq.New(jobsrabbitmq.Config{
+		URL:            jobsRuntimeConfig.RabbitMQURL,
+		Exchange:       jobsRuntimeConfig.Exchange,
+		Queue:          jobsRuntimeConfig.Queue,
+		PublishTimeout: jobsRuntimeConfig.PublishTimeout,
+	})
+	if err != nil {
+		return fmt.Errorf("create jobs publisher: %w", err)
+	}
+	defer jobPublisher.Close()
+
+	jobsUsecase := jobsusecase.New(jobsusecase.Dependencies{
+		Publisher:   jobPublisher,
+		IDGenerator: jobid.NewGenerator(),
+	})
+
 	e := echo.New()
 	e.Use(middleware.Recover())
 
 	handler := httpdelivery.NewHandler(controlPlaneUsecase, log)
 	handler.RegisterRoutes(e)
+
+	jobsHandler := jobshttp.NewHandler(jobsUsecase, log)
+	jobsHandler.RegisterRoutes(e)
 
 	server := &http.Server{
 		Addr:              httpAddr(),

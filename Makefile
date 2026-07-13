@@ -53,6 +53,10 @@ smoke-test:
 	@echo "Redis: PONG"
 	@$(COMPOSE) exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list | grep -q '^edgeguard.gateway.access.v1$$'
 	@echo "Kafka topic: edgeguard.gateway.access.v1"
+	@$(COMPOSE) exec -T rabbitmq rabbitmq-diagnostics -q ping
+	@echo "RabbitMQ: Ping succeeded"
+	@$(COMPOSE) exec -T rabbitmq rabbitmqctl -q list_queues -p edgeguard name | grep -q '^edgeguard.jobs.main.v1$$'
+	@echo "RabbitMQ queue: edgeguard.jobs.main.v1"
 
 e2e-test:
 	./scripts/e2e/mvp4_dynamic_routes.sh
