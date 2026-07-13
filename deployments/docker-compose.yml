@@ -42,6 +42,10 @@ services:
       POSTGRES_MAX_CONNS: "10"
       POSTGRES_MIN_CONNS: "1"
       POSTGRES_MAX_CONN_LIFETIME_SECONDS: "300"
+      RABBITMQ_URL: amqp://edgeguard:edgeguard@rabbitmq:5672/edgeguard
+      JOBS_EXCHANGE: edgeguard.jobs.v1
+      JOBS_QUEUE: edgeguard.jobs.main.v1
+      JOBS_PUBLISH_TIMEOUT: 5s
     ports:
       - "8082:8082"
     depends_on:
@@ -49,6 +53,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8082/health"]
       interval: 30s
@@ -99,6 +105,64 @@ services:
       timeout: 3s
       retries: 5
       start_period: 5s
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4.3.2-management-alpine
+    container_name: edgeguard-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: edgeguard
+      RABBITMQ_DEFAULT_PASS: edgeguard
+      RABBITMQ_DEFAULT_VHOST: edgeguard
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  notification-worker:
+    build:
+      context: ..
+      dockerfile: deployments/docker/notification-worker.Dockerfile
+    container_name: edgeguard-notification-worker
+    environment:
+      RABBITMQ_URL: amqp://edgeguard:edgeguard@rabbitmq:5672/edgeguard
+      RABBITMQ_MANAGEMENT_URL: http://rabbitmq:15672
+      RABBITMQ_USERNAME: edgeguard
+      RABBITMQ_PASSWORD: edgeguard
+      RABBITMQ_VHOST: edgeguard
+      JOBS_EXCHANGE: edgeguard.jobs.v1
+      JOBS_QUEUE: edgeguard.jobs.main.v1
+      JOBS_DEAD_EXCHANGE: edgeguard.jobs.dead.v1
+      JOBS_DEAD_QUEUE: edgeguard.jobs.dead.v1
+      JOBS_WORKER_PREFETCH: "10"
+      JOBS_RETRY_MIN: 5s
+      JOBS_RETRY_MAX: 60s
+      JOBS_PROCESS_TIMEOUT: 2m
+      JOBS_WEBHOOK_TIMEOUT: 15s
+      JOBS_WEBHOOK_ALLOWED_HOSTS: demo-backend
+      JOBS_REPORT_DIRECTORY: /data/reports
+      JOBS_POLICY_INSTALL_TIMEOUT: 30s
+      POSTGRES_DSN: postgres://edgeguard:edgeguard@postgres:5432/edgeguard?sslmode=disable
+      POSTGRES_MAX_CONNS: "5"
+      POSTGRES_MIN_CONNS: "1"
+      POSTGRES_MAX_CONN_LIFETIME_SECONDS: "300"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - reports_data:/data/reports
     restart: unless-stopped
 
   kafka:
@@ -280,3 +344,5 @@ services:
 volumes:
   postgres_data:
   kafka_data:
+  rabbitmq_data:
+  reports_data:

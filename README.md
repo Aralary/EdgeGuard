@@ -206,7 +206,7 @@ edgeguard
 
 ## Локальный запуск
 
-Вся инфраструктура MVP7 запускается одной командой:
+Вся инфраструктура MVP8 запускается одной командой:
 
 ```bash
 make compose-up
@@ -226,6 +226,10 @@ gateway дожидается готовности control-plane, auth, Redis и 
 gateway загружает routes snapshot и запускает polling
         ↓
 Redis хранит распределенные счетчики rate limit
+        ↓
+Kafka принимает access events, analytics-worker агрегирует их в PostgreSQL
+        ↓
+RabbitMQ принимает background jobs, notification-worker обрабатывает их
 ```
 
 Контейнер `edgeguard-migrate` является одноразовым. Состояние `Exited (0)` после запуска — нормальное: оно означает, что миграции успешно применены.
@@ -451,11 +455,62 @@ GET /api/v1/projects/:project_id/analytics/hourly
 
 ### MVP 8 — RabbitMQ Background Jobs
 
-* Notification worker
-* Webhook jobs
-* Report generation jobs
-* Cleanup jobs
-* Retry и dead-letter queue
+* Durable RabbitMQ task queue
+* Publisher confirms и persistent messages
+* Notification worker с manual acknowledgements
+* Webhook delivery с SSRF-защитой
+* JSON/CSV report generation
+* Cleanup expired refresh tokens
+* Delayed retry для quorum queue
+* Dead-letter exchange и DLQ
+* PostgreSQL job statuses
+* HTTP API чтения статуса задачи
+
+### Реализованное поведение MVP 8
+
+Control Plane принимает фоновые задачи через:
+
+```text
+POST /api/v1/jobs/webhooks
+POST /api/v1/jobs/reports
+POST /api/v1/jobs/cleanup
+GET  /api/v1/jobs/:job_id
+```
+
+Перед публикацией создается запись в `background_jobs`. HTTP `202 Accepted` возвращается только после publisher confirmation от RabbitMQ. Если публикация не подтверждена, запись получает `publish_failed`; если broker все же принял сообщение, worker может перевести ее в `processing`, поскольку потеря confirmation является неоднозначным результатом. Статус задачи проходит состояния:
+
+```text
+publishing → queued → processing → succeeded
+     ↓                   ↓
+publish_failed       retrying → processing
+                         ↓
+                       failed → DLQ
+```
+
+Notification Worker использует manual acknowledgements. Успешная задача подтверждается только после сохранения статуса `succeeded` в PostgreSQL. При временной ошибке задача возвращается в quorum queue с delayed retry, а при permanent error или исчерпании `max_attempts` получает статус `failed` и отправляется в `edgeguard.jobs.dead.v1`.
+
+Для защиты от повторного выполнения после сбоя между PostgreSQL update и RabbitMQ ack worker проверяет финальный статус. Повторно доставленная задача со статусом `succeeded` подтверждается без выполнения side effect еще раз.
+
+Webhook worker запрещает private, loopback, link-local и другие служебные адреса, если host явно не добавлен в allowlist. Report jobs создают атомарно публикуемые JSON/CSV-файлы в volume `reports_data`. Cleanup jobs удаляют истекшие и давно отозванные refresh tokens ограниченными batch-операциями.
+
+Пример ответа статуса:
+
+```json
+{
+  "id": "4ebff7b39889f87063ae609ac254a31c",
+  "type": "jobs.webhook.deliver",
+  "status": "succeeded",
+  "current_attempt": 1,
+  "max_attempts": 3,
+  "result_message": "webhook delivered",
+  "affected_rows": 0,
+  "created_at": "2026-07-14T12:00:00Z",
+  "queued_at": "2026-07-14T12:00:00Z",
+  "started_at": "2026-07-14T12:00:01Z",
+  "completed_at": "2026-07-14T12:00:01Z",
+  "updated_at": "2026-07-14T12:00:01Z"
+}
+```
 
 ### MVP 9 — Observability
 
@@ -662,7 +717,7 @@ E2E_TIMEOUT_SECONDS=40 \
 make e2e-rate-limit-test
 ```
 
-Команда `make e2e-test` выполняет проверки MVP4, MVP5, MVP6 и MVP7 последовательно.
+Команда `make e2e-test` выполняет проверки MVP4–MVP8 последовательно.
 
 ### E2E-проверка Kafka Analytics
 
@@ -695,6 +750,38 @@ curl --get \
   --data-urlencode "route_name=${ROUTE_NAME}" \
   --data-urlencode "method=GET" \
   --data-urlencode "limit=100" | jq
+```
+
+### E2E-проверка RabbitMQ Background Jobs
+
+```bash
+make e2e-jobs-test
+```
+
+Тест проверяет полный жизненный цикл задач:
+
+* успешный webhook и создание заказа в Demo Backend;
+* чтение статуса через `GET /api/v1/jobs/:id`;
+* permanent webhook failure и DLQ;
+* временную ошибку, delayed retry и исчерпание `max_attempts`;
+* генерацию JSON-отчета и наличие файла в `reports_data`;
+* cleanup job;
+* корректные `current_attempt`, `last_error`, `result_message`, `output_path` и `affected_rows`.
+
+Проверяемый поток:
+
+```text
+Control Plane → background_jobs(publishing) → RabbitMQ confirm
+              → background_jobs(queued)
+              → Notification Worker
+              → processing / retrying / succeeded / failed
+              → GET /api/v1/jobs/:id
+```
+
+Timeout теста можно увеличить:
+
+```bash
+E2E_TIMEOUT_SECONDS=180 make e2e-jobs-test
 ```
 
 ## Архитектурные решения
@@ -734,7 +821,7 @@ curl --get \
 Текущий реализованный этап:
 
 ```text
-MVP 7 — Kafka Analytics
+MVP 8 — RabbitMQ Background Jobs
 ```
 
 ## License
