@@ -9,6 +9,7 @@ import (
 )
 
 const (
+	defaultHTTPAddr           = ":8084"
 	defaultKafkaTopic         = "edgeguard.gateway.access.v1"
 	defaultKafkaConsumerGroup = "edgeguard-analytics-v1"
 	defaultKafkaClientID      = "edgeguard-analytics-worker"
@@ -18,6 +19,7 @@ const (
 )
 
 type Config struct {
+	HTTPAddr           string
 	KafkaBrokers       []string
 	KafkaTopic         string
 	KafkaConsumerGroup string
@@ -55,6 +57,7 @@ func Load() (Config, error) {
 	}
 
 	return Config{
+		HTTPAddr:           stringFromEnv("ANALYTICS_HTTP_ADDR", defaultHTTPAddr),
 		KafkaBrokers:       brokers,
 		KafkaTopic:         stringFromEnv("KAFKA_ACCESS_TOPIC", defaultKafkaTopic),
 		KafkaConsumerGroup: stringFromEnv("ANALYTICS_KAFKA_GROUP", defaultKafkaConsumerGroup),

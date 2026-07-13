@@ -6,6 +6,7 @@ import (
 )
 
 func TestLoad(t *testing.T) {
+	t.Setenv("ANALYTICS_HTTP_ADDR", ":18084")
 	t.Setenv("KAFKA_BROKERS", " kafka-1:9092, kafka-2:9092, kafka-1:9092 ")
 	t.Setenv("KAFKA_ACCESS_TOPIC", "events")
 	t.Setenv("ANALYTICS_KAFKA_GROUP", "group")
@@ -19,6 +20,9 @@ func TestLoad(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 
+	if cfg.HTTPAddr != ":18084" {
+		t.Fatalf("HTTPAddr = %q, want :18084", cfg.HTTPAddr)
+	}
 	if len(cfg.KafkaBrokers) != 2 || cfg.KafkaBrokers[0] != "kafka-1:9092" || cfg.KafkaBrokers[1] != "kafka-2:9092" {
 		t.Fatalf("unexpected brokers: %#v", cfg.KafkaBrokers)
 	}

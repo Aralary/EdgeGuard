@@ -204,10 +204,13 @@ services:
       ANALYTICS_RETRY_MIN: 1s
       ANALYTICS_RETRY_MAX: 30s
       ANALYTICS_MAX_PROCESS_ATTEMPTS: "5"
+      ANALYTICS_HTTP_ADDR: ":8084"
       POSTGRES_DSN: postgres://edgeguard:edgeguard@postgres:5432/edgeguard?sslmode=disable
       POSTGRES_MAX_CONNS: "5"
       POSTGRES_MIN_CONNS: "1"
       POSTGRES_MAX_CONN_LIFETIME_SECONDS: "300"
+    ports:
+      - "8084:8084"
     depends_on:
       postgres:
         condition: service_healthy
@@ -215,6 +218,12 @@ services:
         condition: service_completed_successfully
       kafka-init:
         condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
     restart: unless-stopped
 
   gateway:

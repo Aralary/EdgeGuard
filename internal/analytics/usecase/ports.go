@@ -13,3 +13,15 @@ type GatewayAccessRepository interface {
 		event events.GatewayAccessEvent,
 	) (domain.IngestionResult, error)
 }
+
+type GatewayStatsRepository interface {
+	GetRouteStatsSummary(
+		ctx context.Context,
+		filter domain.RouteStatsFilter,
+	) (domain.RouteStatsSummary, error)
+	ListRouteStatsHourly(
+		ctx context.Context,
+		filter domain.RouteStatsFilter,
+		limit int,
+	) ([]domain.RouteStatsHourly, error)
+}

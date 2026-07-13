@@ -1,6 +1,6 @@
 COMPOSE := docker compose -f deployments/docker-compose.yml
 
-.PHONY: run-gateway run-demo run-control-plane run-auth run-analytics compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps smoke-test e2e-test e2e-auth-test e2e-rate-limit-test migrate-up migrate-down migrate-status test fmt tidy
+.PHONY: run-gateway run-demo run-control-plane run-auth run-analytics compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps smoke-test e2e-test e2e-auth-test e2e-rate-limit-test e2e-analytics-test migrate-up migrate-down migrate-status test fmt tidy
 
 run-gateway:
 	go run ./cmd/gateway
@@ -45,6 +45,8 @@ smoke-test:
 	@echo
 	curl -fsS http://localhost:8083/health
 	@echo
+	curl -fsS http://localhost:8084/health
+	@echo
 	curl -fsS http://localhost:8082/internal/v1/routes
 	@echo
 	@$(COMPOSE) exec -T redis redis-cli ping | grep -q PONG
@@ -56,12 +58,16 @@ e2e-test:
 	./scripts/e2e/mvp4_dynamic_routes.sh
 	./scripts/e2e/mvp5_api_key_auth.sh
 	./scripts/e2e/mvp6_rate_limiting.sh
+	./scripts/e2e/mvp7_analytics.sh
 
 e2e-auth-test:
 	./scripts/e2e/mvp5_api_key_auth.sh
 
 e2e-rate-limit-test:
 	./scripts/e2e/mvp6_rate_limiting.sh
+
+e2e-analytics-test:
+	./scripts/e2e/mvp7_analytics.sh
 
 migrate-up:
 	$(COMPOSE) run --rm migrate up
