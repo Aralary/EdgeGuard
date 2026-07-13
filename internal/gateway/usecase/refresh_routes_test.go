@@ -43,7 +43,7 @@ func TestUsecaseRefreshRoutesReplacesSnapshot(t *testing.T) {
 		routes: []domain.Route{{Name: "new", PathPrefix: "/new"}},
 	}
 
-	uc := New(repository, source, nil, nil)
+	uc := New(Dependencies{RouteRepository: repository, RouteSource: source})
 
 	count, err := uc.RefreshRoutes(context.Background())
 	if err != nil {
@@ -68,7 +68,7 @@ func TestUsecaseRefreshRoutesCanClearSnapshot(t *testing.T) {
 		routes: []domain.Route{{Name: "old", PathPrefix: "/old"}},
 	}
 
-	uc := New(repository, fakeRouteSource{routes: []domain.Route{}}, nil, nil)
+	uc := New(Dependencies{RouteRepository: repository, RouteSource: fakeRouteSource{routes: []domain.Route{}}})
 
 	count, err := uc.RefreshRoutes(context.Background())
 	if err != nil {
@@ -90,7 +90,7 @@ func TestUsecaseRefreshRoutesPreservesSnapshotOnSourceError(t *testing.T) {
 	}
 	sourceErr := errors.New("control plane unavailable")
 
-	uc := New(repository, fakeRouteSource{err: sourceErr}, nil, nil)
+	uc := New(Dependencies{RouteRepository: repository, RouteSource: fakeRouteSource{err: sourceErr}})
 
 	_, err := uc.RefreshRoutes(context.Background())
 	if !errors.Is(err, sourceErr) {
@@ -108,7 +108,7 @@ func TestUsecaseRefreshRoutesPreservesSnapshotOnSourceError(t *testing.T) {
 
 func TestUsecaseRefreshRoutesWithoutSource(t *testing.T) {
 	repository := &refreshRouteRepository{}
-	uc := New(repository, nil, nil, nil)
+	uc := New(Dependencies{RouteRepository: repository})
 
 	_, err := uc.RefreshRoutes(context.Background())
 	if !errors.Is(err, ErrRouteSourceNotConfigured) {

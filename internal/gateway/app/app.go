@@ -12,6 +12,7 @@ import (
 	authclient "github.com/aralary/edgeguard/internal/gateway/infrastructure/auth"
 	yamlconfig "github.com/aralary/edgeguard/internal/gateway/infrastructure/config"
 	"github.com/aralary/edgeguard/internal/gateway/infrastructure/controlplane"
+	kafkaproducer "github.com/aralary/edgeguard/internal/gateway/infrastructure/kafka"
 	"github.com/aralary/edgeguard/internal/gateway/infrastructure/memory"
 	"github.com/aralary/edgeguard/internal/gateway/infrastructure/proxy"
 	"github.com/aralary/edgeguard/internal/gateway/infrastructure/ratelimit"
@@ -66,8 +67,33 @@ func Run() error {
 		defer rateLimiter.Close()
 	}
 
+	var accessEventPublisher usecase.AccessEventPublisher
+	if len(runtimeConfig.KafkaBrokers) > 0 {
+		producer, producerErr := kafkaproducer.New(kafkaproducer.Config{
+			Brokers:  runtimeConfig.KafkaBrokers,
+			Topic:    runtimeConfig.KafkaAccessTopic,
+			ClientID: runtimeConfig.KafkaClientID,
+		}, log)
+		if producerErr != nil {
+			return producerErr
+		}
+
+		accessEventPublisher = producer
+		defer func() {
+			if closeErr := producer.Close(); closeErr != nil {
+				log.Warnf("close gateway kafka producer: %v", closeErr)
+			}
+		}()
+	}
+
 	routeRepository := memory.NewRouteRepository(gatewayYAMLConfig.DomainRoutes())
-	gatewayUsecase := usecase.New(routeRepository, routeSource, apiKeyValidator, rateLimiter)
+	gatewayUsecase := usecase.New(usecase.Dependencies{
+		RouteRepository:      routeRepository,
+		RouteSource:          routeSource,
+		APIKeyValidator:      apiKeyValidator,
+		RateLimiter:          rateLimiter,
+		AccessEventPublisher: accessEventPublisher,
+	})
 
 	if routeSource != nil {
 		count, refreshErr := gatewayUsecase.RefreshRoutes(ctx)
@@ -91,6 +117,7 @@ func Run() error {
 
 	e.Use(middleware.Recover())
 	e.Use(httpdelivery.RequestID())
+	e.Use(httpdelivery.AccessEvents(gatewayUsecase, log))
 	e.Use(httpdelivery.Logging(log))
 
 	handler := httpdelivery.NewHandler(gatewayUsecase, upstreamProxy, log)

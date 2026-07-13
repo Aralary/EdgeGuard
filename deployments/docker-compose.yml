@@ -101,6 +101,96 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  kafka:
+    image: apache/kafka:4.3.1
+    container_name: edgeguard-kafka
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_NUM_PARTITIONS: "3"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  kafka-init:
+    image: apache/kafka:4.3.1
+    container_name: edgeguard-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_ACCESS_TOPIC: edgeguard.gateway.access.v1
+      KAFKA_ACCESS_TOPIC_PARTITIONS: "3"
+      KAFKA_ACCESS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_INIT_MAX_ATTEMPTS: "30"
+      KAFKA_INIT_RETRY_INTERVAL_SECONDS: "2"
+    entrypoint: ["/bin/bash", "-ec"]
+    command:
+      - |
+        topic="$${KAFKA_ACCESS_TOPIC}"
+        bootstrap_servers="$${KAFKA_BOOTSTRAP_SERVERS}"
+        partitions="$${KAFKA_ACCESS_TOPIC_PARTITIONS}"
+        replication_factor="$${KAFKA_ACCESS_TOPIC_REPLICATION_FACTOR}"
+        max_attempts="$${KAFKA_INIT_MAX_ATTEMPTS}"
+        retry_interval="$${KAFKA_INIT_RETRY_INTERVAL_SECONDS}"
+        kafka_topics=/opt/kafka/bin/kafka-topics.sh
+
+        echo "Initializing Kafka topic: $${topic}"
+
+        for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+          if "$${kafka_topics}" \
+            --bootstrap-server "$${bootstrap_servers}" \
+            --describe \
+            --topic "$${topic}" >/dev/null 2>&1; then
+            echo "Kafka topic is ready: $${topic}"
+            exit 0
+          fi
+
+          echo "Creating Kafka topic: topic=$${topic} attempt=$${attempt}/$${max_attempts}"
+
+          if ! "$${kafka_topics}" \
+            --bootstrap-server "$${bootstrap_servers}" \
+            --create \
+            --topic "$${topic}" \
+            --partitions "$${partitions}" \
+            --replication-factor "$${replication_factor}"; then
+            echo "Kafka topic creation attempt failed" >&2
+          fi
+
+          if "$${kafka_topics}" \
+            --bootstrap-server "$${bootstrap_servers}" \
+            --describe \
+            --topic "$${topic}" >/dev/null 2>&1; then
+            echo "Kafka topic created and verified: $${topic}"
+            exit 0
+          fi
+
+          sleep "$${retry_interval}"
+        done
+
+        echo "Kafka topic was not created after $${max_attempts} attempts: $${topic}" >&2
+        exit 1
+    restart: "no"
+
   gateway:
     build:
       context: ..
@@ -113,6 +203,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       REDIS_RATE_LIMIT_PREFIX: edgeguard:rate-limit
       ROUTES_REFRESH_INTERVAL: 10s
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_ACCESS_TOPIC: edgeguard.gateway.access.v1
+      KAFKA_CLIENT_ID: edgeguard-gateway
     ports:
       - "8080:8080"
     depends_on:
@@ -122,6 +215,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
       demo-backend:
         condition: service_healthy
     healthcheck:
@@ -149,3 +244,4 @@ services:
 
 volumes:
   postgres_data:
+  kafka_data:

@@ -11,6 +11,8 @@ import (
 const (
 	defaultConfigPath            = "configs/gateway.yaml"
 	defaultRoutesRefreshInterval = 10 * time.Second
+	defaultKafkaAccessTopic      = "edgeguard.gateway.access.v1"
+	defaultKafkaClientID         = "edgeguard-gateway"
 )
 
 type Config struct {
@@ -20,6 +22,9 @@ type Config struct {
 	AuthServiceURL        string
 	RedisURL              string
 	RedisRateLimitPrefix  string
+	KafkaBrokers          []string
+	KafkaAccessTopic      string
+	KafkaClientID         string
 }
 
 func Load() (Config, error) {
@@ -30,10 +35,19 @@ func Load() (Config, error) {
 		AuthServiceURL:        strings.TrimSpace(os.Getenv("AUTH_SERVICE_URL")),
 		RedisURL:              strings.TrimSpace(os.Getenv("REDIS_URL")),
 		RedisRateLimitPrefix:  strings.TrimSpace(os.Getenv("REDIS_RATE_LIMIT_PREFIX")),
+		KafkaBrokers:          splitCSV(os.Getenv("KAFKA_BROKERS")),
+		KafkaAccessTopic:      strings.TrimSpace(os.Getenv("KAFKA_ACCESS_TOPIC")),
+		KafkaClientID:         strings.TrimSpace(os.Getenv("KAFKA_CLIENT_ID")),
 	}
 
 	if cfg.ConfigPath == "" {
 		cfg.ConfigPath = defaultConfigPath
+	}
+	if cfg.KafkaAccessTopic == "" {
+		cfg.KafkaAccessTopic = defaultKafkaAccessTopic
+	}
+	if cfg.KafkaClientID == "" {
+		cfg.KafkaClientID = defaultKafkaClientID
 	}
 
 	if rawInterval := strings.TrimSpace(os.Getenv("ROUTES_REFRESH_INTERVAL")); rawInterval != "" {
@@ -49,4 +63,25 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func splitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item == "" {
+			continue
+		}
+		if _, exists := seen[item]; exists {
+			continue
+		}
+
+		seen[item] = struct{}{}
+		result = append(result, item)
+	}
+
+	return result
 }

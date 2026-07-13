@@ -46,6 +46,8 @@ smoke-test:
 	@echo
 	@$(COMPOSE) exec -T redis redis-cli ping | grep -q PONG
 	@echo "Redis: PONG"
+	@$(COMPOSE) exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list | grep -q '^edgeguard.gateway.access.v1$$'
+	@echo "Kafka topic: edgeguard.gateway.access.v1"
 
 e2e-test:
 	./scripts/e2e/mvp4_dynamic_routes.sh

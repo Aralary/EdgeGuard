@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aralary/edgeguard/internal/gateway/domain"
+	"github.com/aralary/edgeguard/internal/platform/events"
 	"github.com/labstack/echo/v5"
 )
 
@@ -21,6 +22,13 @@ type gatewayUsecaseStub struct {
 	rateLimitErr       error
 	rateLimitClientID  string
 	rateLimitCallCount int
+}
+
+func (s *gatewayUsecaseStub) PublishAccessEvent(
+	context.Context,
+	events.GatewayAccessEvent,
+) error {
+	return nil
 }
 
 func (s *gatewayUsecaseStub) ResolveRoute(context.Context, string) (domain.Route, error) {
