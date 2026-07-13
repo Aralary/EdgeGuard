@@ -1,6 +1,6 @@
 COMPOSE := docker compose -f deployments/docker-compose.yml
 
-.PHONY: run-gateway run-demo run-control-plane run-auth run-analytics compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps smoke-test e2e-test e2e-auth-test e2e-rate-limit-test e2e-analytics-test migrate-up migrate-down migrate-status test fmt tidy
+.PHONY: run-gateway run-demo run-control-plane run-auth run-analytics run-notification compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps smoke-test e2e-test e2e-auth-test e2e-rate-limit-test e2e-analytics-test migrate-up migrate-down migrate-status test fmt tidy
 
 run-gateway:
 	go run ./cmd/gateway
@@ -16,6 +16,9 @@ run-auth:
 
 run-analytics:
 	go run ./cmd/analytics-worker
+
+run-notification:
+	go run ./cmd/notification-worker
 
 compose-build:
 	$(COMPOSE) build
@@ -57,6 +60,8 @@ smoke-test:
 	@echo "RabbitMQ: Ping succeeded"
 	@$(COMPOSE) exec -T rabbitmq rabbitmqctl -q list_queues -p edgeguard name | grep -q '^edgeguard.jobs.main.v1$$'
 	@echo "RabbitMQ queue: edgeguard.jobs.main.v1"
+	@$(COMPOSE) exec -T rabbitmq rabbitmqctl -q list_queues -p edgeguard name | grep -q '^edgeguard.jobs.dead.v1$$'
+	@echo "RabbitMQ DLQ: edgeguard.jobs.dead.v1"
 
 e2e-test:
 	./scripts/e2e/mvp4_dynamic_routes.sh

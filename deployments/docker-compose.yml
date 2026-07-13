@@ -127,6 +127,44 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  notification-worker:
+    build:
+      context: ..
+      dockerfile: deployments/docker/notification-worker.Dockerfile
+    container_name: edgeguard-notification-worker
+    environment:
+      RABBITMQ_URL: amqp://edgeguard:edgeguard@rabbitmq:5672/edgeguard
+      RABBITMQ_MANAGEMENT_URL: http://rabbitmq:15672
+      RABBITMQ_USERNAME: edgeguard
+      RABBITMQ_PASSWORD: edgeguard
+      RABBITMQ_VHOST: edgeguard
+      JOBS_EXCHANGE: edgeguard.jobs.v1
+      JOBS_QUEUE: edgeguard.jobs.main.v1
+      JOBS_DEAD_EXCHANGE: edgeguard.jobs.dead.v1
+      JOBS_DEAD_QUEUE: edgeguard.jobs.dead.v1
+      JOBS_WORKER_PREFETCH: "10"
+      JOBS_RETRY_MIN: 5s
+      JOBS_RETRY_MAX: 60s
+      JOBS_PROCESS_TIMEOUT: 2m
+      JOBS_WEBHOOK_TIMEOUT: 15s
+      JOBS_WEBHOOK_ALLOWED_HOSTS: demo-backend
+      JOBS_REPORT_DIRECTORY: /data/reports
+      JOBS_POLICY_INSTALL_TIMEOUT: 30s
+      POSTGRES_DSN: postgres://edgeguard:edgeguard@postgres:5432/edgeguard?sslmode=disable
+      POSTGRES_MAX_CONNS: "5"
+      POSTGRES_MIN_CONNS: "1"
+      POSTGRES_MAX_CONN_LIFETIME_SECONDS: "300"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - reports_data:/data/reports
+    restart: unless-stopped
+
   kafka:
     image: apache/kafka:4.3.1
     container_name: edgeguard-kafka
@@ -307,3 +345,4 @@ volumes:
   postgres_data:
   kafka_data:
   rabbitmq_data:
+  reports_data:
