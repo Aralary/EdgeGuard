@@ -15,6 +15,7 @@ import (
 	jobsconfig "github.com/aralary/edgeguard/internal/jobs/config"
 	jobshttp "github.com/aralary/edgeguard/internal/jobs/delivery/http/v1"
 	jobid "github.com/aralary/edgeguard/internal/jobs/infrastructure/id"
+	jobspostgres "github.com/aralary/edgeguard/internal/jobs/infrastructure/postgres"
 	jobsrabbitmq "github.com/aralary/edgeguard/internal/jobs/infrastructure/rabbitmq"
 	jobsusecase "github.com/aralary/edgeguard/internal/jobs/usecase"
 	"github.com/aralary/edgeguard/internal/platform/logger"
@@ -58,8 +59,10 @@ func Run() error {
 	}
 	defer jobPublisher.Close()
 
+	jobsRepository := jobspostgres.New(pool)
 	jobsUsecase := jobsusecase.New(jobsusecase.Dependencies{
 		Publisher:   jobPublisher,
+		Repository:  jobsRepository,
 		IDGenerator: jobid.NewGenerator(),
 	})
 

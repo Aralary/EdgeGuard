@@ -4,12 +4,14 @@ import "time"
 
 type Dependencies struct {
 	Publisher   Publisher
+	Repository  JobRepository
 	IDGenerator IDGenerator
 	Clock       Clock
 }
 
 type Usecase struct {
 	publisher   Publisher
+	repository  JobRepository
 	idGenerator IDGenerator
 	clock       Clock
 }
@@ -22,6 +24,7 @@ func New(dependencies Dependencies) *Usecase {
 
 	return &Usecase{
 		publisher:   dependencies.Publisher,
+		repository:  dependencies.Repository,
 		idGenerator: dependencies.IDGenerator,
 		clock:       clock,
 	}

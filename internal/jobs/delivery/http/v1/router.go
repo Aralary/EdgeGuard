@@ -7,4 +7,5 @@ func (h *Handler) RegisterRoutes(e *echo.Echo) {
 	jobs.POST("/webhooks", h.submitWebhook)
 	jobs.POST("/reports", h.submitReport)
 	jobs.POST("/cleanup", h.submitCleanup)
+	jobs.GET("/:job_id", h.getJob)
 }

@@ -12,4 +12,5 @@ var (
 	ErrInvalidCleanupTime  = errors.New("invalid cleanup time")
 	ErrInvalidBatchSize    = errors.New("invalid cleanup batch size")
 	ErrInvalidMaxAttempts  = errors.New("invalid max attempts")
+	ErrJobNotFound         = errors.New("job not found")
 )

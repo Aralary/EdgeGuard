@@ -76,9 +76,22 @@ func (u *Usecase) submit(ctx context.Context, jobType platformjobs.Type, payload
 		return domain.Receipt{}, fmt.Errorf("build job envelope: %w", err)
 	}
 
+	job := domain.NewPublishingJob(envelope, createdAt)
+	if err := u.repository.CreateJob(ctx, job); err != nil {
+		return domain.Receipt{}, fmt.Errorf("persist job before publishing: %w", err)
+	}
+
 	if err := u.publisher.Publish(ctx, envelope); err != nil {
+		failedAt := u.clock.Now().UTC()
+		_ = u.repository.MarkSubmissionFailed(ctx, envelope.ID, err.Error(), failedAt)
 		return domain.Receipt{}, fmt.Errorf("publish job: %w", err)
 	}
+
+	// RabbitMQ has already confirmed the message. A status update failure must not
+	// turn the successful submission into a client-visible error because retrying
+	// the HTTP request could enqueue a duplicate job. The worker can move a job
+	// directly from publishing to processing if it consumes the message first.
+	_ = u.repository.MarkQueued(ctx, envelope.ID, u.clock.Now().UTC())
 
 	return domain.Receipt{
 		ID:        envelope.ID,

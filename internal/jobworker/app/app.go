@@ -7,6 +7,7 @@ import (
 	"syscall"
 	"time"
 
+	jobspostgres "github.com/aralary/edgeguard/internal/jobs/infrastructure/postgres"
 	jobworkerconfig "github.com/aralary/edgeguard/internal/jobworker/config"
 	jobworkerpostgres "github.com/aralary/edgeguard/internal/jobworker/infrastructure/postgres"
 	jobworkerrabbitmq "github.com/aralary/edgeguard/internal/jobworker/infrastructure/rabbitmq"
@@ -64,6 +65,7 @@ func Run() error {
 		return err
 	}
 
+	jobStatusRepository := jobspostgres.New(pool)
 	jobUsecase := jobworkerusecase.New(jobworkerusecase.Dependencies{
 		WebhookSender: jobworkerwebhook.New(jobworkerwebhook.Config{
 			Timeout:      config.WebhookTimeout,
@@ -82,7 +84,7 @@ func Run() error {
 		config.RetryMax,
 	)
 
-	if err := consumer.Run(ctx, jobUsecase, log); err != nil {
+	if err := consumer.Run(ctx, jobUsecase, jobStatusRepository, log); err != nil {
 		return fmt.Errorf("run notification worker: %w", err)
 	}
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	jobsdomain "github.com/aralary/edgeguard/internal/jobs/domain"
 	"github.com/aralary/edgeguard/internal/jobworker/domain"
 	platformjobs "github.com/aralary/edgeguard/internal/platform/jobs"
 	"github.com/aralary/edgeguard/internal/platform/logger"
@@ -27,6 +28,13 @@ type ConsumerConfig struct {
 
 type Processor interface {
 	Process(ctx context.Context, envelope platformjobs.Envelope) (domain.Result, error)
+}
+
+type StatusStore interface {
+	PrepareAttempt(ctx context.Context, envelope platformjobs.Envelope, attempt int, at time.Time) (jobsdomain.Status, error)
+	MarkRetrying(ctx context.Context, jobID string, attempt int, failure string, at time.Time) error
+	MarkSucceeded(ctx context.Context, jobID string, attempt int, result jobsdomain.ExecutionResult, at time.Time) error
+	MarkFailed(ctx context.Context, jobID string, attempt int, failure string, at time.Time) error
 }
 
 type Consumer struct {
@@ -65,7 +73,7 @@ func NewConsumer(config ConsumerConfig) (*Consumer, error) {
 	return consumer, nil
 }
 
-func (consumer *Consumer) Run(ctx context.Context, processor Processor, log logger.Logger) error {
+func (consumer *Consumer) Run(ctx context.Context, processor Processor, statusStore StatusStore, log logger.Logger) error {
 	deliveries, err := consumer.channel.Consume(
 		consumer.queue,
 		"edgeguard-notification-worker",
@@ -94,14 +102,20 @@ func (consumer *Consumer) Run(ctx context.Context, processor Processor, log logg
 			if !ok {
 				return ErrConsumerClosed
 			}
-			if err := consumer.handle(ctx, delivery, processor, log); err != nil {
+			if err := consumer.handle(ctx, delivery, processor, statusStore, log); err != nil {
 				return err
 			}
 		}
 	}
 }
 
-func (consumer *Consumer) handle(ctx context.Context, delivery amqp.Delivery, processor Processor, log logger.Logger) error {
+func (consumer *Consumer) handle(
+	ctx context.Context,
+	delivery amqp.Delivery,
+	processor Processor,
+	statusStore StatusStore,
+	log logger.Logger,
+) error {
 	attempt := deliveryAttempt(delivery.Headers)
 
 	var envelope platformjobs.Envelope
@@ -114,6 +128,19 @@ func (consumer *Consumer) handle(ctx context.Context, delivery amqp.Delivery, pr
 		return reject(delivery, false)
 	}
 
+	status, err := statusStore.PrepareAttempt(ctx, envelope, attempt, time.Now().UTC())
+	if err != nil {
+		return fmt.Errorf("prepare job status: %w", err)
+	}
+	if status == jobsdomain.StatusSucceeded {
+		log.Infof("acknowledging already completed job: job_id=%s type=%s", envelope.ID, envelope.Type)
+		return delivery.Ack(false)
+	}
+	if status == jobsdomain.StatusFailed {
+		log.Warnf("dead-lettering already failed job: job_id=%s type=%s", envelope.ID, envelope.Type)
+		return reject(delivery, false)
+	}
+
 	processCtx := ctx
 	if consumer.processTimeout > 0 {
 		var cancel context.CancelFunc
@@ -123,6 +150,13 @@ func (consumer *Consumer) handle(ctx context.Context, delivery amqp.Delivery, pr
 
 	result, err := processor.Process(processCtx, envelope)
 	if err == nil {
+		if err := statusStore.MarkSucceeded(ctx, envelope.ID, attempt, jobsdomain.ExecutionResult{
+			Message:      result.Message,
+			OutputPath:   result.OutputPath,
+			AffectedRows: result.AffectedRows,
+		}, time.Now().UTC()); err != nil {
+			return fmt.Errorf("persist completed job status: %w", err)
+		}
 		if err := delivery.Ack(false); err != nil {
 			return fmt.Errorf("acknowledge completed job: %w", err)
 		}
@@ -139,6 +173,9 @@ func (consumer *Consumer) handle(ctx context.Context, delivery amqp.Delivery, pr
 	}
 
 	if domain.IsPermanent(err) || attempt >= envelope.MaxAttempts {
+		if statusError := statusStore.MarkFailed(ctx, envelope.ID, attempt, err.Error(), time.Now().UTC()); statusError != nil {
+			return fmt.Errorf("persist failed job status: %w", statusError)
+		}
 		log.Errorf(
 			"dead-lettering failed job: job_id=%s type=%s attempt=%d max_attempts=%d permanent=%t error=%v",
 			envelope.ID,
@@ -151,6 +188,9 @@ func (consumer *Consumer) handle(ctx context.Context, delivery amqp.Delivery, pr
 		return reject(delivery, false)
 	}
 
+	if statusError := statusStore.MarkRetrying(ctx, envelope.ID, attempt, err.Error(), time.Now().UTC()); statusError != nil {
+		return fmt.Errorf("persist retrying job status: %w", statusError)
+	}
 	log.Warnf(
 		"returning job for delayed retry: job_id=%s type=%s attempt=%d max_attempts=%d error=%v",
 		envelope.ID,

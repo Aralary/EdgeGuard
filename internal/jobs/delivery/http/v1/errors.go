@@ -17,6 +17,15 @@ func (h *Handler) handleError(c *echo.Context, operation string, err error) erro
 	return c.JSON(http.StatusServiceUnavailable, errorResponse{Error: "job queue is unavailable"})
 }
 
+func (h *Handler) handleGetError(c *echo.Context, operation string, err error) error {
+	if errors.Is(err, domain.ErrJobNotFound) {
+		return c.JSON(http.StatusNotFound, errorResponse{Error: domain.ErrJobNotFound.Error()})
+	}
+
+	h.log.Errorf("%s: %v", operation, err)
+	return c.JSON(http.StatusInternalServerError, errorResponse{Error: "internal error"})
+}
+
 func isValidationError(err error) bool {
 	return errors.Is(err, errInvalidRequestBody) ||
 		errors.Is(err, domain.ErrInvalidWebhookURL) ||

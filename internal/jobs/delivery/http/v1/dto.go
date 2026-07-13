@@ -36,6 +36,23 @@ type jobReceiptResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type jobStatusResponse struct {
+	ID             string     `json:"id"`
+	Type           string     `json:"type"`
+	Status         string     `json:"status"`
+	CurrentAttempt int        `json:"current_attempt"`
+	MaxAttempts    int        `json:"max_attempts"`
+	CreatedAt      time.Time  `json:"created_at"`
+	QueuedAt       *time.Time `json:"queued_at,omitempty"`
+	StartedAt      *time.Time `json:"started_at,omitempty"`
+	CompletedAt    *time.Time `json:"completed_at,omitempty"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	LastError      string     `json:"last_error,omitempty"`
+	ResultMessage  string     `json:"result_message,omitempty"`
+	OutputPath     string     `json:"output_path,omitempty"`
+	AffectedRows   int64      `json:"affected_rows"`
+}
+
 type errorResponse struct {
 	Error string `json:"error"`
 }
@@ -46,5 +63,24 @@ func newJobReceiptResponse(receipt domain.Receipt) jobReceiptResponse {
 		Type:      string(receipt.Type),
 		Status:    receipt.Status,
 		CreatedAt: receipt.CreatedAt,
+	}
+}
+
+func newJobStatusResponse(job domain.Job) jobStatusResponse {
+	return jobStatusResponse{
+		ID:             job.ID,
+		Type:           string(job.Type),
+		Status:         string(job.Status),
+		CurrentAttempt: job.CurrentAttempt,
+		MaxAttempts:    job.MaxAttempts,
+		CreatedAt:      job.CreatedAt,
+		QueuedAt:       job.QueuedAt,
+		StartedAt:      job.StartedAt,
+		CompletedAt:    job.CompletedAt,
+		UpdatedAt:      job.UpdatedAt,
+		LastError:      job.LastError,
+		ResultMessage:  job.ResultMessage,
+		OutputPath:     job.OutputPath,
+		AffectedRows:   job.AffectedRows,
 	}
 }

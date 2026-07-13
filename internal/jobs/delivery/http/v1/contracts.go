@@ -11,4 +11,5 @@ type JobsUsecase interface {
 	SubmitWebhook(ctx context.Context, input usecase.SubmitWebhookInput) (domain.Receipt, error)
 	SubmitReport(ctx context.Context, input usecase.SubmitReportInput) (domain.Receipt, error)
 	SubmitCleanup(ctx context.Context, input usecase.SubmitCleanupInput) (domain.Receipt, error)
+	GetJob(ctx context.Context, jobID string) (domain.Job, error)
 }
