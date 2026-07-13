@@ -39,6 +39,8 @@ func (h *Handler) proxyRequest(c *echo.Context) error {
 		return c.String(http.StatusInternalServerError, "internal error\n")
 	}
 
+	setAccessEventRoute(c, route)
+
 	principal, err := h.usecase.AuthorizeRoute(req.Context(), route, req.Header.Get(apiKeyHeader))
 	if err != nil {
 		switch {
@@ -54,6 +56,10 @@ func (h *Handler) proxyRequest(c *echo.Context) error {
 			h.log.Errorf("failed to authorize route: %v", err)
 			return c.String(http.StatusInternalServerError, "internal error\n")
 		}
+	}
+
+	if principal.APIKeyID != "" {
+		setAccessEventAPIKey(c, principal.APIKeyID)
 	}
 
 	clientID := rateLimitClientID(req, route, principal)
@@ -75,6 +81,7 @@ func (h *Handler) proxyRequest(c *echo.Context) error {
 	} else if result.Enabled {
 		setRateLimitHeaders(c.Response().Header(), result)
 		if !result.Allowed {
+			setAccessEventRateLimited(c)
 			return c.String(http.StatusTooManyRequests, "rate limit exceeded\n")
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/aralary/edgeguard/internal/gateway/domain"
+	"github.com/aralary/edgeguard/internal/platform/events"
 )
 
 type RouteRepository interface {
@@ -21,4 +22,8 @@ type APIKeyValidator interface {
 
 type RateLimiter interface {
 	Allow(ctx context.Context, request domain.RateLimitRequest) (domain.RateLimitResult, error)
+}
+
+type AccessEventPublisher interface {
+	PublishGatewayAccess(ctx context.Context, event events.GatewayAccessEvent) error
 }

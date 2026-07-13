@@ -206,7 +206,7 @@ edgeguard
 
 ## Локальный запуск
 
-Вся инфраструктура MVP6 запускается одной командой:
+Вся инфраструктура MVP7 запускается одной командой:
 
 ```bash
 make compose-up
@@ -426,9 +426,28 @@ allowed request or HTTP 429
 ### MVP 7 — Kafka Analytics
 
 * Gateway access events
-* Kafka producer
-* Analytics worker
-* Агрегация статистики запросов
+* Асинхронный Kafka producer
+* Analytics consumer group
+* Идемпотентное хранение raw events
+* Почасовая агрегация статистики
+* HTTP API сводки и временного ряда
+
+### Реализованное поведение MVP 7
+
+Gateway публикует версионированные access events в topic `edgeguard.gateway.access.v1`. Публикация не блокирует основной HTTP-трафик и работает в режиме fail-open: проблемы Kafka логируются, но не изменяют ответ клиенту.
+
+Analytics Service читает сообщения consumer group `edgeguard-analytics-v1`. Offset подтверждается только после успешной PostgreSQL-транзакции. `event_id` используется как primary key, поэтому повторная Kafka delivery не увеличивает агрегаты повторно.
+
+Каждое событие хранится в `gateway_access_events`. События известных маршрутов дополнительно агрегируются в `gateway_route_stats_hourly` по проекту, маршруту, HTTP-методу и часовому bucket.
+
+Analytics HTTP API доступен на `:8084`:
+
+```text
+GET /api/v1/projects/:project_id/analytics/summary
+GET /api/v1/projects/:project_id/analytics/hourly
+```
+
+Поддерживаются query-параметры `from`, `to`, `route_name`, `method`; для hourly endpoint также поддерживается `limit`. `from` и `to` передаются в RFC3339. Поскольку данные агрегируются почасово, интервал расширяется до границ соответствующих часовых buckets. Максимальный диапазон одного запроса — 90 дней.
 
 ### MVP 8 — RabbitMQ Background Jobs
 
@@ -643,7 +662,40 @@ E2E_TIMEOUT_SECONDS=40 \
 make e2e-rate-limit-test
 ```
 
-Команда `make e2e-test` теперь выполняет проверки MVP4, MVP5 и MVP6 последовательно.
+Команда `make e2e-test` выполняет проверки MVP4, MVP5, MVP6 и MVP7 последовательно.
+
+### E2E-проверка Kafka Analytics
+
+```bash
+make e2e-analytics-test
+```
+
+Тест создает уникальные project, service и route, выполняет запросы через Gateway и ожидает прохождения всей цепочки:
+
+```text
+Gateway → Kafka → Analytics Consumer → PostgreSQL → Analytics HTTP API
+```
+
+Ручной запрос сводки за последние 24 часа:
+
+```bash
+curl --get \
+  "http://localhost:8084/api/v1/projects/${PROJECT_ID}/analytics/summary" \
+  --data-urlencode "route_name=${ROUTE_NAME}" \
+  --data-urlencode "method=GET" | jq
+```
+
+Почасовой временной ряд:
+
+```bash
+curl --get \
+  "http://localhost:8084/api/v1/projects/${PROJECT_ID}/analytics/hourly" \
+  --data-urlencode "from=2026-07-13T00:00:00Z" \
+  --data-urlencode "to=2026-07-14T00:00:00Z" \
+  --data-urlencode "route_name=${ROUTE_NAME}" \
+  --data-urlencode "method=GET" \
+  --data-urlencode "limit=100" | jq
+```
 
 ## Архитектурные решения
 
@@ -682,7 +734,7 @@ make e2e-rate-limit-test
 Текущий реализованный этап:
 
 ```text
-MVP 6 — Redis Rate Limiting
+MVP 7 — Kafka Analytics
 ```
 
 ## License

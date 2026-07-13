@@ -27,7 +27,7 @@ func (l *fakeRateLimiter) Allow(
 
 func TestCheckRateLimitSkipsDisabledPolicy(t *testing.T) {
 	limiter := &fakeRateLimiter{err: errors.New("must not be called")}
-	uc := New(fakeRouteRepository{}, nil, nil, limiter)
+	uc := New(Dependencies{RouteRepository: fakeRouteRepository{}, RateLimiter: limiter})
 
 	result, err := uc.CheckRateLimit(context.Background(), domain.Route{}, "ip:127.0.0.1")
 	if err != nil {
@@ -52,7 +52,7 @@ func TestCheckRateLimitUsesRouteAndClientIdentity(t *testing.T) {
 		Remaining: 4,
 	}
 	limiter := &fakeRateLimiter{result: want}
-	uc := New(fakeRouteRepository{}, nil, nil, limiter)
+	uc := New(Dependencies{RouteRepository: fakeRouteRepository{}, RateLimiter: limiter})
 
 	route := domain.Route{
 		ProjectID:  "project-1",
@@ -84,7 +84,7 @@ func TestCheckRateLimitUsesRouteAndClientIdentity(t *testing.T) {
 }
 
 func TestCheckRateLimitFailsWithoutLimiter(t *testing.T) {
-	uc := New(fakeRouteRepository{}, nil, nil, nil)
+	uc := New(Dependencies{RouteRepository: fakeRouteRepository{}})
 
 	_, err := uc.CheckRateLimit(context.Background(), domain.Route{
 		RateLimit: domain.RateLimitPolicy{Enabled: true, Limit: 5, Window: time.Minute},
@@ -95,7 +95,7 @@ func TestCheckRateLimitFailsWithoutLimiter(t *testing.T) {
 }
 
 func TestCheckRateLimitValidatesPolicy(t *testing.T) {
-	uc := New(fakeRouteRepository{}, nil, nil, &fakeRateLimiter{})
+	uc := New(Dependencies{RouteRepository: fakeRouteRepository{}, RateLimiter: &fakeRateLimiter{}})
 
 	_, err := uc.CheckRateLimit(context.Background(), domain.Route{
 		RateLimit: domain.RateLimitPolicy{Enabled: true, Limit: 0, Window: time.Minute},
@@ -106,7 +106,7 @@ func TestCheckRateLimitValidatesPolicy(t *testing.T) {
 }
 
 func TestCheckRateLimitValidatesClientID(t *testing.T) {
-	uc := New(fakeRouteRepository{}, nil, nil, &fakeRateLimiter{})
+	uc := New(Dependencies{RouteRepository: fakeRouteRepository{}, RateLimiter: &fakeRateLimiter{}})
 
 	_, err := uc.CheckRateLimit(context.Background(), domain.Route{
 		RateLimit: domain.RateLimitPolicy{Enabled: true, Limit: 5, Window: time.Minute},
@@ -118,7 +118,7 @@ func TestCheckRateLimitValidatesClientID(t *testing.T) {
 
 func TestCheckRateLimitPropagatesLimiterError(t *testing.T) {
 	limiterErr := errors.New("redis unavailable")
-	uc := New(fakeRouteRepository{}, nil, nil, &fakeRateLimiter{err: limiterErr})
+	uc := New(Dependencies{RouteRepository: fakeRouteRepository{}, RateLimiter: &fakeRateLimiter{err: limiterErr}})
 
 	_, err := uc.CheckRateLimit(context.Background(), domain.Route{
 		RateLimit: domain.RateLimitPolicy{Enabled: true, Limit: 5, Window: time.Minute},

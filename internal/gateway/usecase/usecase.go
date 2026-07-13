@@ -1,22 +1,27 @@
 package usecase
 
-type Usecase struct {
-	routeRepository RouteRepository
-	routeSource     RouteSource
-	apiKeyValidator APIKeyValidator
-	rateLimiter     RateLimiter
+type Dependencies struct {
+	RouteRepository      RouteRepository
+	RouteSource          RouteSource
+	APIKeyValidator      APIKeyValidator
+	RateLimiter          RateLimiter
+	AccessEventPublisher AccessEventPublisher
 }
 
-func New(
-	routeRepository RouteRepository,
-	routeSource RouteSource,
-	apiKeyValidator APIKeyValidator,
-	rateLimiter RateLimiter,
-) *Usecase {
+type Usecase struct {
+	routeRepository      RouteRepository
+	routeSource          RouteSource
+	apiKeyValidator      APIKeyValidator
+	rateLimiter          RateLimiter
+	accessEventPublisher AccessEventPublisher
+}
+
+func New(dependencies Dependencies) *Usecase {
 	return &Usecase{
-		routeRepository: routeRepository,
-		routeSource:     routeSource,
-		apiKeyValidator: apiKeyValidator,
-		rateLimiter:     rateLimiter,
+		routeRepository:      dependencies.RouteRepository,
+		routeSource:          dependencies.RouteSource,
+		apiKeyValidator:      dependencies.APIKeyValidator,
+		rateLimiter:          dependencies.RateLimiter,
+		accessEventPublisher: dependencies.AccessEventPublisher,
 	}
 }
