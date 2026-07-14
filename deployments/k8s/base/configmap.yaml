@@ -1,0 +1,58 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: edgeguard-config
+  namespace: edgeguard
+data:
+  GATEWAY_CONFIG_PATH: /app/configs/gateway.docker.yaml
+  CONTROL_PLANE_URL: http://control-plane:8082
+  AUTH_SERVICE_URL: http://auth:8083
+  REDIS_URL: redis://redis:6379/0
+  REDIS_RATE_LIMIT_PREFIX: edgeguard:rate-limit
+  ROUTES_REFRESH_INTERVAL: 10s
+
+  CONTROL_PLANE_HTTP_ADDR: :8082
+  AUTH_HTTP_ADDR: :8083
+  ANALYTICS_HTTP_ADDR: :8084
+  JOBS_OBSERVABILITY_ADDR: :8085
+
+  AUTH_JWT_ISSUER: edgeguard-auth
+  AUTH_JWT_AUDIENCE: edgeguard
+  AUTH_ACCESS_TOKEN_TTL: 15m
+  AUTH_REFRESH_TOKEN_TTL: 720h
+  AUTH_REFRESH_TOKEN_SIZE: "32"
+  AUTH_BCRYPT_COST: "10"
+
+  POSTGRES_MAX_CONNS: "10"
+  POSTGRES_MIN_CONNS: "1"
+  POSTGRES_MAX_CONN_LIFETIME_SECONDS: "300"
+
+  KAFKA_BROKERS: kafka:9092
+  KAFKA_ACCESS_TOPIC: edgeguard.gateway.access.v1
+  KAFKA_CLIENT_ID: edgeguard-gateway
+  ANALYTICS_KAFKA_GROUP: edgeguard-analytics-v1
+  ANALYTICS_KAFKA_CLIENT_ID: edgeguard-analytics-worker
+  ANALYTICS_RETRY_MIN: 1s
+  ANALYTICS_RETRY_MAX: 30s
+  ANALYTICS_MAX_PROCESS_ATTEMPTS: "5"
+
+  RABBITMQ_MANAGEMENT_URL: http://rabbitmq:15672
+  JOBS_EXCHANGE: edgeguard.jobs.v1
+  JOBS_QUEUE: edgeguard.jobs.main.v1
+  JOBS_DEAD_EXCHANGE: edgeguard.jobs.dead.v1
+  JOBS_DEAD_QUEUE: edgeguard.jobs.dead.v1
+  JOBS_POLICY_NAME: edgeguard-jobs-main
+  JOBS_PUBLISH_TIMEOUT: 5s
+  JOBS_WORKER_PREFETCH: "10"
+  JOBS_RETRY_MIN: 5s
+  JOBS_RETRY_MAX: 60s
+  JOBS_PROCESS_TIMEOUT: 2m
+  JOBS_WEBHOOK_TIMEOUT: 15s
+  JOBS_WEBHOOK_ALLOWED_HOSTS: demo-backend
+  JOBS_REPORT_DIRECTORY: /data/reports
+  JOBS_POLICY_INSTALL_TIMEOUT: 30s
+
+  OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
+  OTEL_EXPORTER_OTLP_INSECURE: "true"
+  OTEL_DEPLOYMENT_ENVIRONMENT: kubernetes
+  OTEL_TRACES_SAMPLER_RATIO: "0.1"

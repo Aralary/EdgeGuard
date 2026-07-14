@@ -8,12 +8,13 @@ RUN CGO_ENABLED=0 go install \
 
 FROM alpine:3.22
 
-RUN adduser -D -g '' appuser
+RUN addgroup -g 10001 appgroup \
+    && adduser -D -u 10001 -G appgroup appuser
 
 COPY --from=builder /go/bin/goose /usr/local/bin/goose
 COPY migrations /migrations
 
-USER appuser
+USER 10001:10001
 
 ENV GOOSE_DRIVER=postgres \
     GOOSE_MIGRATION_DIR=/migrations

@@ -10,7 +10,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/notification-worker ./cmd/notifica
 
 FROM alpine:3.22
 
-RUN adduser -D -g '' appuser \
+RUN addgroup -g 10001 appgroup \
+    && adduser -D -u 10001 -G appgroup appuser \
     && mkdir -p /data/reports \
     && chown -R appuser:appuser /data
 
@@ -18,6 +19,6 @@ WORKDIR /app
 
 COPY --from=builder /bin/notification-worker /app/notification-worker
 
-USER appuser
+USER 10001:10001
 
 ENTRYPOINT ["/app/notification-worker"]

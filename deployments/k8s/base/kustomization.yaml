@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: edgeguard
+commonLabels:
+  app.kubernetes.io/part-of: edgeguard
+  app.kubernetes.io/managed-by: kustomize
+resources:
+  - namespace.yaml
+  - service-account.yaml
+  - configmap.yaml
+  - secret.yaml
+  - reports-pvc.yaml
+  - migrations-job.yaml
+  - gateway.yaml
+  - control-plane.yaml
+  - auth.yaml
+  - analytics-worker.yaml
+  - notification-worker.yaml
+  - demo-backend.yaml
