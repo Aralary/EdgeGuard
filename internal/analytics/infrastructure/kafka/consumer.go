@@ -119,6 +119,18 @@ func New(
 	}, nil
 }
 
+func (c *Consumer) Ping(ctx context.Context) error {
+	if c == nil || c.client == nil {
+		return errors.New("kafka consumer is not configured")
+	}
+
+	if err := c.client.Ping(ctx); err != nil {
+		return fmt.Errorf("ping kafka analytics broker: %w", err)
+	}
+
+	return nil
+}
+
 func (c *Consumer) Run(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()

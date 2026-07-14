@@ -30,7 +30,7 @@ func AccessEvents(publisher AccessEventUsecase, log logger.Logger) echo.Middlewa
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c *echo.Context) error {
 			req := c.Request()
-			if req.URL.Path == "/health" {
+			if isObservabilityEndpoint(req.URL.Path) {
 				return next(c)
 			}
 

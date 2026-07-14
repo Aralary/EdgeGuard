@@ -128,6 +128,17 @@ func (p *Publisher) Publish(ctx context.Context, envelope platformjobs.Envelope)
 	return nil
 }
 
+func (p *Publisher) Ping(context.Context) error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	if p.closed || p.connection == nil || p.connection.IsClosed() || p.channel == nil || p.channel.IsClosed() {
+		return ErrPublisherClosed
+	}
+
+	return nil
+}
+
 func (p *Publisher) Close() error {
 	p.mutex.Lock()
 	defer p.mutex.Unlock()

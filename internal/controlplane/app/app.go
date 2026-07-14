@@ -19,6 +19,7 @@ import (
 	jobsrabbitmq "github.com/aralary/edgeguard/internal/jobs/infrastructure/rabbitmq"
 	jobsusecase "github.com/aralary/edgeguard/internal/jobs/usecase"
 	"github.com/aralary/edgeguard/internal/platform/logger"
+	"github.com/aralary/edgeguard/internal/platform/observability"
 	platformpostgres "github.com/aralary/edgeguard/internal/platform/postgres"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
@@ -66,8 +67,16 @@ func Run() error {
 		IDGenerator: jobid.NewGenerator(),
 	})
 
+	metrics := observability.NewMetrics("control-plane")
+	readiness := observability.NewReadiness("control-plane",
+		observability.Check{Name: "postgres", Run: pool.Ping},
+		observability.Check{Name: "rabbitmq", Run: jobPublisher.Ping},
+	)
+
 	e := echo.New()
 	e.Use(middleware.Recover())
+	e.Use(metrics.Middleware())
+	observability.Register(e, metrics, readiness)
 
 	handler := httpdelivery.NewHandler(controlPlaneUsecase, log)
 	handler.RegisterRoutes(e)

@@ -73,6 +73,14 @@ func NewConsumer(config ConsumerConfig) (*Consumer, error) {
 	return consumer, nil
 }
 
+func (consumer *Consumer) Ping(context.Context) error {
+	if consumer == nil || consumer.connection == nil || consumer.connection.IsClosed() || consumer.channel == nil || consumer.channel.IsClosed() {
+		return ErrConsumerClosed
+	}
+
+	return nil
+}
+
 func (consumer *Consumer) Run(ctx context.Context, processor Processor, statusStore StatusStore, log logger.Logger) error {
 	deliveries, err := consumer.channel.Consume(
 		consumer.queue,

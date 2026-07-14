@@ -14,6 +14,7 @@ import (
 	"github.com/aralary/edgeguard/internal/auth/infrastructure/security"
 	"github.com/aralary/edgeguard/internal/auth/usecase"
 	"github.com/aralary/edgeguard/internal/platform/logger"
+	"github.com/aralary/edgeguard/internal/platform/observability"
 	platformpostgres "github.com/aralary/edgeguard/internal/platform/postgres"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
@@ -69,8 +70,15 @@ func Run() error {
 		usecase.Config{RefreshTokenTTL: cfg.RefreshTokenTTL},
 	)
 
+	metrics := observability.NewMetrics("auth")
+	readiness := observability.NewReadiness("auth",
+		observability.Check{Name: "postgres", Run: pool.Ping},
+	)
+
 	e := echo.New()
 	e.Use(middleware.Recover())
+	e.Use(metrics.Middleware())
+	observability.Register(e, metrics, readiness)
 
 	handler := httpdelivery.NewHandler(authUsecase, log)
 	handler.RegisterRoutes(e)

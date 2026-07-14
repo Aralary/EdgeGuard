@@ -19,6 +19,7 @@ import (
 	"github.com/aralary/edgeguard/internal/gateway/usecase"
 	"github.com/aralary/edgeguard/internal/gateway/worker"
 	"github.com/aralary/edgeguard/internal/platform/logger"
+	"github.com/aralary/edgeguard/internal/platform/observability"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 )
@@ -68,8 +69,10 @@ func Run() error {
 	}
 
 	var accessEventPublisher usecase.AccessEventPublisher
+	var kafkaProducer *kafkaproducer.Producer
 	if len(runtimeConfig.KafkaBrokers) > 0 {
-		producer, producerErr := kafkaproducer.New(kafkaproducer.Config{
+		var producerErr error
+		kafkaProducer, producerErr = kafkaproducer.New(kafkaproducer.Config{
 			Brokers:  runtimeConfig.KafkaBrokers,
 			Topic:    runtimeConfig.KafkaAccessTopic,
 			ClientID: runtimeConfig.KafkaClientID,
@@ -78,9 +81,9 @@ func Run() error {
 			return producerErr
 		}
 
-		accessEventPublisher = producer
+		accessEventPublisher = kafkaProducer
 		defer func() {
-			if closeErr := producer.Close(); closeErr != nil {
+			if closeErr := kafkaProducer.Close(); closeErr != nil {
 				log.Warnf("close gateway kafka producer: %v", closeErr)
 			}
 		}()
@@ -113,9 +116,30 @@ func Run() error {
 
 	upstreamProxy := proxy.NewHTTPUtilProxy()
 
+	checks := make([]observability.Check, 0, 4)
+	if runtimeConfig.ControlPlaneURL != "" {
+		checks = append(checks, observability.Optional(
+			observability.HTTPCheck("control_plane", runtimeConfig.ControlPlaneURL, nil),
+		))
+	}
+	if runtimeConfig.AuthServiceURL != "" {
+		checks = append(checks, observability.HTTPCheck("auth", runtimeConfig.AuthServiceURL, nil))
+	}
+	if rateLimiter != nil {
+		checks = append(checks, observability.Check{Name: "redis", Run: rateLimiter.Ping, Optional: true})
+	}
+	if kafkaProducer != nil {
+		checks = append(checks, observability.Check{Name: "kafka", Run: kafkaProducer.Ping, Optional: true})
+	}
+
+	metrics := observability.NewMetrics("gateway")
+	readiness := observability.NewReadiness("gateway", checks...)
+
 	e := echo.New()
 
 	e.Use(middleware.Recover())
+	e.Use(metrics.Middleware())
+	observability.Register(e, metrics, readiness)
 	e.Use(httpdelivery.RequestID())
 	e.Use(httpdelivery.AccessEvents(gatewayUsecase, log))
 	e.Use(httpdelivery.Logging(log))

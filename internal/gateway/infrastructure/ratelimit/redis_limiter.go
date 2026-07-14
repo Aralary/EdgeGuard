@@ -92,6 +92,18 @@ func New(redisURL string, keyPrefix string) (*Limiter, error) {
 	}, nil
 }
 
+func (l *Limiter) Ping(ctx context.Context) error {
+	if l == nil || l.client == nil {
+		return errors.New("redis limiter is not configured")
+	}
+
+	if err := l.client.Ping(ctx).Err(); err != nil {
+		return fmt.Errorf("ping redis: %w", err)
+	}
+
+	return nil
+}
+
 func (l *Limiter) Close() error {
 	if l == nil || l.client == nil {
 		return nil

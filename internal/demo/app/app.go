@@ -11,6 +11,7 @@ import (
 	"github.com/aralary/edgeguard/internal/demo/infrastructure/memory"
 	"github.com/aralary/edgeguard/internal/demo/usecase"
 	"github.com/aralary/edgeguard/internal/platform/logger"
+	"github.com/aralary/edgeguard/internal/platform/observability"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 )
@@ -22,8 +23,13 @@ func Run() error {
 
 	demoUsecase := usecase.New(repo)
 
+	metrics := observability.NewMetrics("demo-backend")
+	readiness := observability.NewReadiness("demo-backend")
+
 	e := echo.New()
 	e.Use(middleware.Recover())
+	e.Use(metrics.Middleware())
+	observability.Register(e, metrics, readiness)
 
 	handler := httpdelivery.NewHandler(demoUsecase, log)
 	handler.RegisterRoutes(e)

@@ -14,6 +14,7 @@ import (
 	analyticspostgres "github.com/aralary/edgeguard/internal/analytics/infrastructure/postgres"
 	"github.com/aralary/edgeguard/internal/analytics/usecase"
 	"github.com/aralary/edgeguard/internal/platform/logger"
+	"github.com/aralary/edgeguard/internal/platform/observability"
 	platformpostgres "github.com/aralary/edgeguard/internal/platform/postgres"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
@@ -65,8 +66,16 @@ func Run() error {
 	}
 	defer consumer.Close()
 
+	metrics := observability.NewMetrics("analytics")
+	readiness := observability.NewReadiness("analytics",
+		observability.Check{Name: "postgres", Run: pool.Ping},
+		observability.Check{Name: "kafka", Run: consumer.Ping},
+	)
+
 	e := echo.New()
 	e.Use(middleware.Recover())
+	e.Use(metrics.Middleware())
+	observability.Register(e, metrics, readiness)
 	handler := httpdelivery.NewHandler(analyticsUsecase, log)
 	handler.RegisterRoutes(e)
 

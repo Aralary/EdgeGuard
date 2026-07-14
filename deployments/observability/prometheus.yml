@@ -1,0 +1,28 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: edgeguard-gateway
+    static_configs:
+      - targets: ["gateway:8080"]
+
+  - job_name: edgeguard-control-plane
+    static_configs:
+      - targets: ["control-plane:8082"]
+
+  - job_name: edgeguard-auth
+    static_configs:
+      - targets: ["auth:8083"]
+
+  - job_name: edgeguard-analytics
+    static_configs:
+      - targets: ["analytics-worker:8084"]
+
+  - job_name: edgeguard-notification-worker
+    static_configs:
+      - targets: ["notification-worker:8085"]
+
+  - job_name: edgeguard-demo-backend
+    static_configs:
+      - targets: ["demo-backend:8081"]

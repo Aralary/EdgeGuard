@@ -118,6 +118,18 @@ func (p *Producer) PublishGatewayAccess(ctx context.Context, event events.Gatewa
 	return nil
 }
 
+func (p *Producer) Ping(ctx context.Context) error {
+	if p == nil || p.client == nil {
+		return errors.New("kafka producer is not configured")
+	}
+
+	if err := p.client.Ping(ctx); err != nil {
+		return fmt.Errorf("ping kafka producer: %w", err)
+	}
+
+	return nil
+}
+
 func (p *Producer) Close() error {
 	flushContext, cancel := context.WithTimeout(context.Background(), p.flushTimeout)
 	defer cancel()
