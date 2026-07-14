@@ -11,7 +11,12 @@ import (
 
 	"github.com/aralary/edgeguard/internal/platform/events"
 	"github.com/aralary/edgeguard/internal/platform/logger"
+	platformtracing "github.com/aralary/edgeguard/internal/platform/tracing"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -89,23 +94,39 @@ func (p *Producer) PublishGatewayAccess(ctx context.Context, event events.Gatewa
 		return fmt.Errorf("validate gateway access event: %w", err)
 	}
 
-	record, err := accessEventRecord(p.topic, event)
-	if err != nil {
-		return err
-	}
-
 	produceContext := context.Background()
 	if ctx != nil {
 		// Access-event publishing is asynchronous and must outlive the HTTP request.
-		// A cancelable request context would remove the buffered record before Kafka
-		// has a chance to send it.
 		produceContext = context.WithoutCancel(ctx)
 	}
 
+	produceContext, span := otel.Tracer("edgeguard.gateway.kafka").Start(
+		produceContext,
+		"kafka publish "+p.topic,
+		oteltrace.WithSpanKind(oteltrace.SpanKindProducer),
+		oteltrace.WithAttributes(
+			attribute.String("messaging.system", "kafka"),
+			attribute.String("messaging.destination.name", p.topic),
+			attribute.String("messaging.operation.type", "send"),
+			attribute.String("messaging.message.id", event.EventID),
+		),
+	)
+
+	record, err := accessEventRecord(produceContext, p.topic, event)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		span.End()
+		return err
+	}
+
 	// TryProduce preserves fail-open semantics: it never blocks the HTTP request.
-	// If the local producer buffer is full, the callback receives ErrMaxBuffered.
+	// The span is ended by the delivery callback after Kafka accepts or rejects
+	// the buffered record.
 	p.client.TryProduce(produceContext, record, func(_ *kgo.Record, produceErr error) {
 		if produceErr != nil {
+			span.RecordError(produceErr)
+			span.SetStatus(codes.Error, produceErr.Error())
 			p.log.Warnf(
 				"gateway access event delivery failed: event_id=%s topic=%s error=%v",
 				event.EventID,
@@ -113,7 +134,20 @@ func (p *Producer) PublishGatewayAccess(ctx context.Context, event events.Gatewa
 				produceErr,
 			)
 		}
+		span.End()
 	})
+
+	return nil
+}
+
+func (p *Producer) Ping(ctx context.Context) error {
+	if p == nil || p.client == nil {
+		return errors.New("kafka producer is not configured")
+	}
+
+	if err := p.client.Ping(ctx); err != nil {
+		return fmt.Errorf("ping kafka producer: %w", err)
+	}
 
 	return nil
 }
@@ -132,7 +166,7 @@ func (p *Producer) Close() error {
 	return nil
 }
 
-func accessEventRecord(topic string, event events.GatewayAccessEvent) (*kgo.Record, error) {
+func accessEventRecord(ctx context.Context, topic string, event events.GatewayAccessEvent) (*kgo.Record, error) {
 	payload, err := json.Marshal(event)
 	if err != nil {
 		return nil, fmt.Errorf("marshal gateway access event: %w", err)
@@ -143,15 +177,20 @@ func accessEventRecord(topic string, event events.GatewayAccessEvent) (*kgo.Reco
 		key = event.ProjectID + ":" + event.RouteName
 	}
 
+	headers := []kgo.RecordHeader{
+		{Key: "event-type", Value: []byte(events.GatewayAccessEventType)},
+		{Key: "schema-version", Value: []byte(strconv.Itoa(event.SchemaVersion))},
+	}
+	for name, value := range platformtracing.Inject(ctx) {
+		headers = append(headers, kgo.RecordHeader{Key: name, Value: []byte(value)})
+	}
+
 	return &kgo.Record{
 		Topic:     topic,
 		Key:       []byte(key),
 		Value:     payload,
 		Timestamp: event.OccurredAt,
-		Headers: []kgo.RecordHeader{
-			{Key: "event-type", Value: []byte(events.GatewayAccessEventType)},
-			{Key: "schema-version", Value: []byte(strconv.Itoa(event.SchemaVersion))},
-		},
+		Headers:   headers,
 	}, nil
 }
 

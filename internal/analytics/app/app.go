@@ -14,7 +14,9 @@ import (
 	analyticspostgres "github.com/aralary/edgeguard/internal/analytics/infrastructure/postgres"
 	"github.com/aralary/edgeguard/internal/analytics/usecase"
 	"github.com/aralary/edgeguard/internal/platform/logger"
+	"github.com/aralary/edgeguard/internal/platform/observability"
 	platformpostgres "github.com/aralary/edgeguard/internal/platform/postgres"
+	platformtracing "github.com/aralary/edgeguard/internal/platform/tracing"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 )
@@ -31,6 +33,12 @@ func Run() error {
 	defer stop()
 	runCtx, cancelRun := context.WithCancel(signalCtx)
 	defer cancelRun()
+
+	traceProvider, err := platformtracing.Init(runCtx, "analytics")
+	if err != nil {
+		return fmt.Errorf("initialize analytics tracing: %w", err)
+	}
+	defer shutdownTracing(traceProvider, log)
 
 	poolCtx, cancelPool := context.WithTimeout(runCtx, 10*time.Second)
 	pool, err := platformpostgres.NewPool(poolCtx, platformpostgres.NewConfigFromEnv())
@@ -65,14 +73,23 @@ func Run() error {
 	}
 	defer consumer.Close()
 
+	metrics := observability.NewMetrics("analytics")
+	readiness := observability.NewReadiness("analytics",
+		observability.Check{Name: "postgres", Run: pool.Ping},
+		observability.Check{Name: "kafka", Run: consumer.Ping},
+	)
+
 	e := echo.New()
 	e.Use(middleware.Recover())
+	e.Use(metrics.Middleware())
+	e.Use(platformtracing.RouteMiddleware())
+	observability.Register(e, metrics, readiness)
 	handler := httpdelivery.NewHandler(analyticsUsecase, log)
 	handler.RegisterRoutes(e)
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           e,
+		Handler:           platformtracing.WrapHTTPHandler("analytics", e),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -124,4 +141,12 @@ func Run() error {
 	}
 
 	return runErr
+}
+
+func shutdownTracing(provider *platformtracing.Provider, log logger.Logger) {
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := provider.Shutdown(shutdownCtx); err != nil {
+		log.Warnf("shutdown OpenTelemetry tracing: %v", err)
+	}
 }

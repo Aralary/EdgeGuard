@@ -11,7 +11,12 @@ import (
 	"github.com/aralary/edgeguard/internal/jobworker/domain"
 	platformjobs "github.com/aralary/edgeguard/internal/platform/jobs"
 	"github.com/aralary/edgeguard/internal/platform/logger"
+	platformtracing "github.com/aralary/edgeguard/internal/platform/tracing"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 var ErrConsumerClosed = errors.New("RabbitMQ job consumer closed")
@@ -73,6 +78,14 @@ func NewConsumer(config ConsumerConfig) (*Consumer, error) {
 	return consumer, nil
 }
 
+func (consumer *Consumer) Ping(context.Context) error {
+	if consumer == nil || consumer.connection == nil || consumer.connection.IsClosed() || consumer.channel == nil || consumer.channel.IsClosed() {
+		return ErrConsumerClosed
+	}
+
+	return nil
+}
+
 func (consumer *Consumer) Run(ctx context.Context, processor Processor, statusStore StatusStore, log logger.Logger) error {
 	deliveries, err := consumer.channel.Consume(
 		consumer.queue,
@@ -115,6 +128,48 @@ func (consumer *Consumer) handle(
 	processor Processor,
 	statusStore StatusStore,
 	log logger.Logger,
+) (handleErr error) {
+	traceHeaders := make(map[string]string)
+	for name, value := range delivery.Headers {
+		switch typed := value.(type) {
+		case string:
+			traceHeaders[name] = typed
+		case []byte:
+			traceHeaders[name] = string(typed)
+		}
+	}
+	ctx = platformtracing.Extract(ctx, traceHeaders)
+	attempt := deliveryAttempt(delivery.Headers)
+	ctx, span := otel.Tracer("edgeguard.jobworker.rabbitmq").Start(
+		ctx,
+		"rabbitmq process "+delivery.Type,
+		oteltrace.WithSpanKind(oteltrace.SpanKindConsumer),
+		oteltrace.WithAttributes(
+			attribute.String("messaging.system", "rabbitmq"),
+			attribute.String("messaging.destination.name", consumer.queue),
+			attribute.String("messaging.operation.type", "process"),
+			attribute.String("messaging.message.id", delivery.MessageId),
+			attribute.String("messaging.rabbitmq.routing_key", delivery.RoutingKey),
+			attribute.Int("edgeguard.job.attempt", attempt),
+		),
+	)
+	defer func() {
+		if handleErr != nil {
+			span.RecordError(handleErr)
+			span.SetStatus(codes.Error, handleErr.Error())
+		}
+		span.End()
+	}()
+
+	return consumer.handleDelivery(ctx, delivery, processor, statusStore, log)
+}
+
+func (consumer *Consumer) handleDelivery(
+	ctx context.Context,
+	delivery amqp.Delivery,
+	processor Processor,
+	statusStore StatusStore,
+	log logger.Logger,
 ) error {
 	attempt := deliveryAttempt(delivery.Headers)
 
@@ -133,10 +188,14 @@ func (consumer *Consumer) handle(
 		return fmt.Errorf("prepare job status: %w", err)
 	}
 	if status == jobsdomain.StatusSucceeded {
+		oteltrace.SpanFromContext(ctx).SetAttributes(attribute.String("edgeguard.job.outcome", "already_succeeded"))
 		log.Infof("acknowledging already completed job: job_id=%s type=%s", envelope.ID, envelope.Type)
 		return delivery.Ack(false)
 	}
 	if status == jobsdomain.StatusFailed {
+		span := oteltrace.SpanFromContext(ctx)
+		span.SetAttributes(attribute.String("edgeguard.job.outcome", "already_failed"))
+		span.SetStatus(codes.Error, "job already failed")
 		log.Warnf("dead-lettering already failed job: job_id=%s type=%s", envelope.ID, envelope.Type)
 		return reject(delivery, false)
 	}
@@ -150,6 +209,7 @@ func (consumer *Consumer) handle(
 
 	result, err := processor.Process(processCtx, envelope)
 	if err == nil {
+		oteltrace.SpanFromContext(ctx).SetAttributes(attribute.String("edgeguard.job.outcome", "succeeded"))
 		if err := statusStore.MarkSucceeded(ctx, envelope.ID, attempt, jobsdomain.ExecutionResult{
 			Message:      result.Message,
 			OutputPath:   result.OutputPath,
@@ -172,7 +232,12 @@ func (consumer *Consumer) handle(
 		return nil
 	}
 
+	span := oteltrace.SpanFromContext(ctx)
+	span.RecordError(err)
+	span.SetStatus(codes.Error, err.Error())
+
 	if domain.IsPermanent(err) || attempt >= envelope.MaxAttempts {
+		span.SetAttributes(attribute.String("edgeguard.job.outcome", "failed"))
 		if statusError := statusStore.MarkFailed(ctx, envelope.ID, attempt, err.Error(), time.Now().UTC()); statusError != nil {
 			return fmt.Errorf("persist failed job status: %w", statusError)
 		}
@@ -188,6 +253,7 @@ func (consumer *Consumer) handle(
 		return reject(delivery, false)
 	}
 
+	span.SetAttributes(attribute.String("edgeguard.job.outcome", "retrying"))
 	if statusError := statusStore.MarkRetrying(ctx, envelope.ID, attempt, err.Error(), time.Now().UTC()); statusError != nil {
 		return fmt.Errorf("persist retrying job status: %w", statusError)
 	}

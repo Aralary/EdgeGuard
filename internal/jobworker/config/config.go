@@ -26,6 +26,7 @@ const (
 	defaultWebhookTimeout       = 15 * time.Second
 	defaultReportDirectory      = "./data/reports"
 	defaultPolicyInstallTimeout = 30 * time.Second
+	defaultObservabilityAddr    = ":8085"
 )
 
 var (
@@ -56,6 +57,7 @@ type Config struct {
 	WebhookAllowedHosts  []string
 	ReportDirectory      string
 	PolicyInstallTimeout time.Duration
+	ObservabilityAddr    string
 }
 
 func Load() (Config, error) {
@@ -105,6 +107,7 @@ func Load() (Config, error) {
 		WebhookAllowedHosts:  csvEnv("JOBS_WEBHOOK_ALLOWED_HOSTS"),
 		ReportDirectory:      envOrDefault("JOBS_REPORT_DIRECTORY", defaultReportDirectory),
 		PolicyInstallTimeout: policyInstallTimeout,
+		ObservabilityAddr:    envOrDefault("JOBS_OBSERVABILITY_ADDR", defaultObservabilityAddr),
 	}, nil
 }
 

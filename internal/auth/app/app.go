@@ -14,7 +14,9 @@ import (
 	"github.com/aralary/edgeguard/internal/auth/infrastructure/security"
 	"github.com/aralary/edgeguard/internal/auth/usecase"
 	"github.com/aralary/edgeguard/internal/platform/logger"
+	"github.com/aralary/edgeguard/internal/platform/observability"
 	platformpostgres "github.com/aralary/edgeguard/internal/platform/postgres"
+	platformtracing "github.com/aralary/edgeguard/internal/platform/tracing"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 )
@@ -29,6 +31,12 @@ func Run() error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	traceProvider, err := platformtracing.Init(ctx, "auth")
+	if err != nil {
+		return fmt.Errorf("initialize auth tracing: %w", err)
+	}
+	defer shutdownTracing(traceProvider, log)
 
 	poolCtx, cancelPool := context.WithTimeout(ctx, 10*time.Second)
 	pool, err := platformpostgres.NewPool(poolCtx, platformpostgres.NewConfigFromEnv())
@@ -69,15 +77,23 @@ func Run() error {
 		usecase.Config{RefreshTokenTTL: cfg.RefreshTokenTTL},
 	)
 
+	metrics := observability.NewMetrics("auth")
+	readiness := observability.NewReadiness("auth",
+		observability.Check{Name: "postgres", Run: pool.Ping},
+	)
+
 	e := echo.New()
 	e.Use(middleware.Recover())
+	e.Use(metrics.Middleware())
+	e.Use(platformtracing.RouteMiddleware())
+	observability.Register(e, metrics, readiness)
 
 	handler := httpdelivery.NewHandler(authUsecase, log)
 	handler.RegisterRoutes(e)
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           e,
+		Handler:           platformtracing.WrapHTTPHandler("auth", e),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -113,4 +129,12 @@ func Run() error {
 	}
 
 	return nil
+}
+
+func shutdownTracing(provider *platformtracing.Provider, log logger.Logger) {
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := provider.Shutdown(shutdownCtx); err != nil {
+		log.Warnf("shutdown OpenTelemetry tracing: %v", err)
+	}
 }

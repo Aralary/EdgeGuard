@@ -149,6 +149,20 @@ Background jobs
 +----------------------+
 | Notification Worker  |
 +----------------------+
+
+Metrics from all services
+      |
+      v
++----------------------+      +----------------------+
+|      Prometheus      |----->|       Grafana        |
++----------------------+      | metrics and traces   |
+                              +----------+-----------+
+Traces from all services                 ^
+      |                                  |
+      v                                  |
++----------------------+      +----------+-----------+
+|    OTel Collector    |----->|        Tempo         |
++----------------------+      +----------------------+
 ```
 
 ## Структура репозитория
@@ -206,7 +220,7 @@ edgeguard
 
 ## Локальный запуск
 
-Вся инфраструктура MVP8 запускается одной командой:
+Вся инфраструктура MVP9 запускается одной командой:
 
 ```bash
 make compose-up
@@ -230,6 +244,10 @@ Redis хранит распределенные счетчики rate limit
 Kafka принимает access events, analytics-worker агрегирует их в PostgreSQL
         ↓
 RabbitMQ принимает background jobs, notification-worker обрабатывает их
+        ↓
+Prometheus собирает метрики, OTel Collector экспортирует traces в Tempo
+        ↓
+Grafana визуализирует метрики и позволяет исследовать traces
 ```
 
 Контейнер `edgeguard-migrate` является одноразовым. Состояние `Exited (0)` после запуска — нормальное: оно означает, что миграции успешно применены.
@@ -519,6 +537,57 @@ Webhook worker запрещает private, loopback, link-local и другие 
 * Grafana dashboard
 * Health и readiness endpoints
 
+### Реализованное поведение MVP 9
+
+Все HTTP-сервисы публикуют `/health`, `/ready` и `/metrics`. Liveness проверяет только работоспособность процесса, а readiness дополнительно проверяет обязательные зависимости. Gateway сообщает состояние optional-зависимостей как `degraded`, не останавливая трафик при отказе Redis, Kafka или Control Plane.
+
+Prometheus доступен на `:9090` и собирает RED-метрики сервисов:
+
+```text
+edgeguard_http_requests_total
+edgeguard_http_request_duration_seconds
+edgeguard_http_response_size_bytes
+edgeguard_http_requests_in_flight
+```
+
+Label `route` содержит route template, а не конкретный UUID или пользовательский path, что ограничивает cardinality временных рядов.
+
+OpenTelemetry spans передаются по OTLP/gRPC через Collector в Tempo. Trace context распространяется через:
+
+```text
+HTTP:       traceparent header
+Kafka:      record headers
+RabbitMQ:   AMQP headers
+```
+
+Поэтому один trace может охватывать синхронную и асинхронную цепочку:
+
+```text
+Gateway → Demo Backend
+       └→ Kafka → Analytics
+
+Control Plane → RabbitMQ → Notification Worker → webhook
+```
+
+Сервисы возвращают `X-Trace-ID`, по которому trace можно получить из Tempo или открыть в Grafana.
+
+Grafana доступна на `:3000`. Data sources Prometheus и Tempo, а также dashboard `EdgeGuard Overview` создаются автоматически из version-controlled provisioning-файлов. Dashboard содержит request rate, 5xx rate, P95 latency, in-flight requests, response size, memory, goroutines и состояние Prometheus targets.
+
+Локальные адреса:
+
+```text
+Prometheus:     http://localhost:9090
+Tempo API:      http://localhost:3200
+OTel Collector: http://localhost:13133
+Grafana:        http://localhost:3000
+```
+
+Учетные данные Grafana для локального Compose:
+
+```text
+admin / admin
+```
+
 ### MVP 10 — Kubernetes Deployment
 
 * Kubernetes manifests
@@ -598,6 +667,9 @@ make smoke-test
 curl http://localhost:8080/health
 curl http://localhost:8082/health
 curl http://localhost:8082/internal/v1/routes
+curl http://localhost:9090/-/ready
+curl http://localhost:3200/ready
+curl http://localhost:3000/api/health
 ```
 
 После создания маршрута через Control Plane Gateway подхватит его не позднее чем через `ROUTES_REFRESH_INTERVAL` и начнет проксировать соответствующие запросы без перезапуска.
@@ -717,7 +789,7 @@ E2E_TIMEOUT_SECONDS=40 \
 make e2e-rate-limit-test
 ```
 
-Команда `make e2e-test` выполняет проверки MVP4–MVP8 последовательно.
+Команда `make e2e-test` выполняет проверки MVP4–MVP9 последовательно.
 
 ### E2E-проверка Kafka Analytics
 
@@ -784,6 +856,46 @@ Timeout теста можно увеличить:
 E2E_TIMEOUT_SECONDS=180 make e2e-jobs-test
 ```
 
+### E2E-проверка Observability
+
+```bash
+make e2e-observability-test
+```
+
+Тест проверяет:
+
+* готовность Prometheus, Tempo и Grafana;
+* состояние всех EdgeGuard targets в Prometheus;
+* provisioning data sources `prometheus` и `tempo`;
+* provisioning dashboard `edgeguard-overview`;
+* увеличение HTTP-счетчика после запроса через Gateway;
+* trace `Gateway → Demo Backend → Kafka → Analytics`;
+* trace `Control Plane → RabbitMQ → Notification Worker → Demo Backend`.
+
+Trace ID возвращается в заголовке:
+
+```http
+X-Trace-ID: 24f413607fa16aeae6b186db87a4d924
+```
+
+Получить trace напрямую из Tempo:
+
+```bash
+curl -fsS "http://localhost:3200/api/traces/${TRACE_ID}" | jq
+```
+
+Открыть dashboard:
+
+```text
+http://localhost:3000/d/edgeguard-overview/edgeguard-overview
+```
+
+При медленном локальном окружении timeout можно увеличить:
+
+```bash
+E2E_TIMEOUT_SECONDS=180 make e2e-observability-test
+```
+
 ## Архитектурные решения
 
 Архитектурные решения документируются в директории `docs/adr`.
@@ -821,7 +933,7 @@ E2E_TIMEOUT_SECONDS=180 make e2e-jobs-test
 Текущий реализованный этап:
 
 ```text
-MVP 8 — RabbitMQ Background Jobs
+MVP 9 — Observability
 ```
 
 ## License

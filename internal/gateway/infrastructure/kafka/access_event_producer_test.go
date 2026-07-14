@@ -1,6 +1,7 @@
 package kafka
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -55,7 +56,7 @@ func TestAccessEventRecord(t *testing.T) {
 		ClientID:      "key-1",
 	}
 
-	record, err := accessEventRecord("gateway.access.v1", event)
+	record, err := accessEventRecord(context.Background(), "gateway.access.v1", event)
 	if err != nil {
 		t.Fatalf("accessEventRecord() error = %v", err)
 	}

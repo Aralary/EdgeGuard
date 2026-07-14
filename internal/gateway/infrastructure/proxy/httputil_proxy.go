@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/aralary/edgeguard/internal/gateway/domain"
+	platformtracing "github.com/aralary/edgeguard/internal/platform/tracing"
 )
 
 type HTTPUtilProxy struct{}
@@ -27,6 +28,7 @@ func (p *HTTPUtilProxy) ServeHTTP(w http.ResponseWriter, r *http.Request, route 
 	defer cancel()
 
 	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.Transport = platformtracing.HTTPTransport(nil)
 
 	originalDirector := proxy.Director
 	originalPath := r.URL.Path

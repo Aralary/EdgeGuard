@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	platformtracing "github.com/aralary/edgeguard/internal/platform/tracing"
 )
 
 type PolicyConfig struct {
@@ -32,7 +34,7 @@ type PolicyInstaller struct {
 func NewPolicyInstaller(config PolicyConfig) *PolicyInstaller {
 	return &PolicyInstaller{
 		config: config,
-		client: &http.Client{Timeout: 5 * time.Second},
+		client: &http.Client{Timeout: 5 * time.Second, Transport: platformtracing.HTTPTransport(nil)},
 	}
 }
 

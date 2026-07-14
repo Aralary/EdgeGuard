@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/aralary/edgeguard/internal/gateway/domain"
+	platformtracing "github.com/aralary/edgeguard/internal/platform/tracing"
 )
 
 const (
@@ -50,7 +51,7 @@ func New(baseURL string, httpClient *http.Client) (*Client, error) {
 	}
 
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
+		httpClient = &http.Client{Timeout: defaultHTTPTimeout, Transport: platformtracing.HTTPTransport(nil)}
 	}
 
 	return &Client{

@@ -12,7 +12,7 @@ func Logging(log logger.Logger) echo.MiddlewareFunc {
 		return func(c *echo.Context) error {
 			req := c.Request()
 
-			if req.URL.Path == "/health" {
+			if isObservabilityEndpoint(req.URL.Path) {
 				return next(c)
 			}
 
@@ -37,5 +37,14 @@ func Logging(log logger.Logger) echo.MiddlewareFunc {
 
 			return err
 		}
+	}
+}
+
+func isObservabilityEndpoint(path string) bool {
+	switch path {
+	case "/health", "/ready", "/metrics":
+		return true
+	default:
+		return false
 	}
 }
