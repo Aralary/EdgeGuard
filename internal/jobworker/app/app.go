@@ -18,6 +18,7 @@ import (
 	"github.com/aralary/edgeguard/internal/platform/logger"
 	"github.com/aralary/edgeguard/internal/platform/observability"
 	platformpostgres "github.com/aralary/edgeguard/internal/platform/postgres"
+	platformtracing "github.com/aralary/edgeguard/internal/platform/tracing"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 )
@@ -28,6 +29,12 @@ func Run() error {
 	defer stop()
 	runCtx, cancelRun := context.WithCancel(signalCtx)
 	defer cancelRun()
+
+	traceProvider, err := platformtracing.Init(runCtx, "notification-worker")
+	if err != nil {
+		return fmt.Errorf("initialize notification worker tracing: %w", err)
+	}
+	defer shutdownTracing(traceProvider, log)
 
 	config, err := jobworkerconfig.Load()
 	if err != nil {
@@ -90,6 +97,7 @@ func Run() error {
 	e := echo.New()
 	e.Use(middleware.Recover())
 	e.Use(metrics.Middleware())
+	e.Use(platformtracing.RouteMiddleware())
 	e.GET("/health", func(c *echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{
 			"status":  "ok",
@@ -100,7 +108,7 @@ func Run() error {
 
 	server := &http.Server{
 		Addr:              config.ObservabilityAddr,
-		Handler:           e,
+		Handler:           platformtracing.WrapHTTPHandler("notification-worker", e),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -179,5 +187,13 @@ func installPolicy(ctx context.Context, installer policyInstaller, timeout time.
 			return fmt.Errorf("install RabbitMQ jobs policy: %w: last error: %v", installCtx.Err(), lastError)
 		case <-ticker.C:
 		}
+	}
+}
+
+func shutdownTracing(provider *platformtracing.Provider, log logger.Logger) {
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := provider.Shutdown(shutdownCtx); err != nil {
+		log.Warnf("shutdown OpenTelemetry tracing: %v", err)
 	}
 }

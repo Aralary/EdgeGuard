@@ -1,6 +1,6 @@
 COMPOSE := docker compose -f deployments/docker-compose.yml
 
-.PHONY: run-gateway run-demo run-control-plane run-auth run-analytics run-notification compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps wait-prometheus smoke-test e2e-test e2e-auth-test e2e-rate-limit-test e2e-analytics-test e2e-jobs-test migrate-up migrate-down migrate-status test fmt tidy
+.PHONY: run-gateway run-demo run-control-plane run-auth run-analytics run-notification compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps wait-prometheus wait-tracing smoke-test e2e-test e2e-auth-test e2e-rate-limit-test e2e-analytics-test e2e-jobs-test migrate-up migrate-down migrate-status test fmt tidy
 
 run-gateway:
 	go run ./cmd/gateway
@@ -55,6 +55,20 @@ wait-prometheus:
 	$(COMPOSE) logs --no-color --tail=100 prometheus >&2; \
 	exit 1
 
+wait-tracing:
+	@echo "Waiting for OpenTelemetry Collector and Tempo..."
+	@for attempt in $$(seq 1 30); do \
+		if curl -fsS http://localhost:13133/ >/dev/null 2>&1 && curl -fsS http://localhost:3200/ready >/dev/null 2>&1; then \
+			echo "Tracing backends: ready"; \
+			exit 0; \
+		fi; \
+		sleep 2; \
+	done; \
+	echo "Tracing backends did not become ready" >&2; \
+	$(COMPOSE) ps -a otel-collector tempo >&2; \
+	$(COMPOSE) logs --no-color --tail=100 otel-collector tempo >&2; \
+	exit 1
+
 smoke-test:
 	curl -fsS http://localhost:8080/health
 	@echo
@@ -77,6 +91,8 @@ smoke-test:
 	curl -fsS http://localhost:8085/ready
 	@echo
 	@$(MAKE) --no-print-directory wait-prometheus
+	@echo
+	@$(MAKE) --no-print-directory wait-tracing
 	@echo
 	curl -fsS http://localhost:8082/internal/v1/routes
 	@echo

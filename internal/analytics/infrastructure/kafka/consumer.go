@@ -12,7 +12,12 @@ import (
 	"github.com/aralary/edgeguard/internal/analytics/usecase"
 	"github.com/aralary/edgeguard/internal/platform/events"
 	"github.com/aralary/edgeguard/internal/platform/logger"
+	platformtracing "github.com/aralary/edgeguard/internal/platform/tracing"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 const defaultPingTimeout = 10 * time.Second
@@ -174,9 +179,36 @@ func (c *Consumer) Close() {
 	c.client.CloseAllowingRebalance()
 }
 
-func (c *Consumer) handleRecord(ctx context.Context, record *kgo.Record) error {
+func (c *Consumer) handleRecord(ctx context.Context, record *kgo.Record) (handleErr error) {
+	traceHeaders := make(map[string]string, len(record.Headers))
+	for _, header := range record.Headers {
+		traceHeaders[header.Key] = string(header.Value)
+	}
+	ctx = platformtracing.Extract(ctx, traceHeaders)
+	ctx, span := otel.Tracer("edgeguard.analytics.kafka").Start(
+		ctx,
+		"kafka process "+record.Topic,
+		oteltrace.WithSpanKind(oteltrace.SpanKindConsumer),
+		oteltrace.WithAttributes(
+			attribute.String("messaging.system", "kafka"),
+			attribute.String("messaging.destination.name", record.Topic),
+			attribute.String("messaging.operation.type", "process"),
+			attribute.Int("messaging.kafka.partition", int(record.Partition)),
+			attribute.Int64("messaging.kafka.offset", record.Offset),
+		),
+	)
+	defer func() {
+		if handleErr != nil {
+			span.RecordError(handleErr)
+			span.SetStatus(codes.Error, handleErr.Error())
+		}
+		span.End()
+	}()
+
 	event, err := decodeGatewayAccessEvent(record.Value)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "invalid gateway access event")
 		c.log.Errorf(
 			"skipping invalid gateway access event: topic=%s partition=%d offset=%d error=%v",
 			record.Topic,
@@ -187,10 +219,13 @@ func (c *Consumer) handleRecord(ctx context.Context, record *kgo.Record) error {
 
 		return c.commitRecord(ctx, record)
 	}
+	span.SetAttributes(attribute.String("messaging.message.id", event.EventID))
 
 	result, err := c.processWithRetry(ctx, event, record)
 	if err != nil {
 		if errors.Is(err, usecase.ErrInvalidGatewayAccessEvent) {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, "invalid gateway access event")
 			c.log.Errorf(
 				"skipping permanently invalid gateway access event: event_id=%s partition=%d offset=%d error=%v",
 				event.EventID,
@@ -206,6 +241,7 @@ func (c *Consumer) handleRecord(ctx context.Context, record *kgo.Record) error {
 	}
 
 	if result.Duplicate {
+		span.SetAttributes(attribute.Bool("edgeguard.analytics.duplicate", true))
 		c.log.Debugf(
 			"gateway access event already processed: event_id=%s partition=%d offset=%d",
 			event.EventID,

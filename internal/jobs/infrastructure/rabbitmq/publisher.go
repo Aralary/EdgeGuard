@@ -9,7 +9,12 @@ import (
 	"time"
 
 	platformjobs "github.com/aralary/edgeguard/internal/platform/jobs"
+	platformtracing "github.com/aralary/edgeguard/internal/platform/tracing"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 var (
@@ -64,10 +69,33 @@ func New(config Config) (*Publisher, error) {
 	return publisher, nil
 }
 
-func (p *Publisher) Publish(ctx context.Context, envelope platformjobs.Envelope) error {
+func (p *Publisher) Publish(ctx context.Context, envelope platformjobs.Envelope) (publishErr error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if err := envelope.Validate(); err != nil {
 		return fmt.Errorf("validate job envelope: %w", err)
 	}
+
+	ctx, span := otel.Tracer("edgeguard.jobs.rabbitmq").Start(
+		ctx,
+		"rabbitmq publish "+string(envelope.Type),
+		oteltrace.WithSpanKind(oteltrace.SpanKindProducer),
+		oteltrace.WithAttributes(
+			attribute.String("messaging.system", "rabbitmq"),
+			attribute.String("messaging.destination.name", p.exchange),
+			attribute.String("messaging.operation.type", "send"),
+			attribute.String("messaging.message.id", envelope.ID),
+			attribute.String("messaging.rabbitmq.routing_key", string(envelope.Type)),
+		),
+	)
+	defer func() {
+		if publishErr != nil {
+			span.RecordError(publishErr)
+			span.SetStatus(codes.Error, publishErr.Error())
+		}
+		span.End()
+	}()
 
 	body, err := json.Marshal(envelope)
 	if err != nil {
@@ -88,12 +116,17 @@ func (p *Publisher) Publish(ctx context.Context, envelope platformjobs.Envelope)
 		defer cancel()
 	}
 
+	headers := amqp.Table{
+		"schema-version": int32(envelope.SchemaVersion),
+		"attempt":        int32(envelope.Attempt),
+		"max-attempts":   int32(envelope.MaxAttempts),
+	}
+	for name, value := range platformtracing.Inject(ctx) {
+		headers[name] = value
+	}
+
 	message := amqp.Publishing{
-		Headers: amqp.Table{
-			"schema-version": int32(envelope.SchemaVersion),
-			"attempt":        int32(envelope.Attempt),
-			"max-attempts":   int32(envelope.MaxAttempts),
-		},
+		Headers:      headers,
 		ContentType:  "application/json",
 		DeliveryMode: amqp.Persistent,
 		MessageId:    envelope.ID,

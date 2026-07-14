@@ -15,6 +15,7 @@ import (
 
 	"github.com/aralary/edgeguard/internal/jobworker/domain"
 	platformjobs "github.com/aralary/edgeguard/internal/platform/jobs"
+	platformtracing "github.com/aralary/edgeguard/internal/platform/tracing"
 )
 
 const maxResponseBodyBytes = 64 * 1024
@@ -89,7 +90,7 @@ func (s *Sender) Deliver(ctx context.Context, payload platformjobs.WebhookPayloa
 		DialContext: fixedDialer(target.Hostname(), addresses),
 	}
 	client := &http.Client{
-		Transport: transport,
+		Transport: platformtracing.HTTPTransport(transport),
 		Timeout:   s.timeout,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 			return http.ErrUseLastResponse

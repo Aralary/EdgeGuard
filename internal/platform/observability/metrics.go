@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aralary/edgeguard/internal/platform/httpresponse"
+
 	"github.com/labstack/echo/v5"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -94,12 +96,12 @@ func (m *Metrics) Middleware() echo.MiddlewareFunc {
 
 			startedAt := time.Now()
 			originalResponse := c.Response()
-			recorder := newResponseRecorder(originalResponse)
+			recorder := httpresponse.NewRecorder(originalResponse)
 			c.SetResponse(recorder)
 			defer c.SetResponse(originalResponse)
 
 			err := next(c)
-			status := recorder.status
+			status := recorder.StatusCode()
 			if err != nil && status < http.StatusBadRequest {
 				status = http.StatusInternalServerError
 			}
@@ -112,7 +114,7 @@ func (m *Metrics) Middleware() echo.MiddlewareFunc {
 			method := request.Method
 			m.requests.WithLabelValues(method, route, strconv.Itoa(status)).Inc()
 			m.duration.WithLabelValues(method, route).Observe(time.Since(startedAt).Seconds())
-			m.responseSize.WithLabelValues(method, route).Observe(float64(recorder.bytes))
+			m.responseSize.WithLabelValues(method, route).Observe(float64(recorder.BytesWritten()))
 
 			return err
 		}
