@@ -5,6 +5,9 @@ set -euo pipefail
 CONTROL_PLANE_URL="${CONTROL_PLANE_URL:-http://localhost:8082}"
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:8080}"
 COMPOSE_FILE="${COMPOSE_FILE:-deployments/docker-compose.yml}"
+E2E_RUNTIME="${E2E_RUNTIME:-compose}"
+KUBE_CONTEXT="${KUBE_CONTEXT:-kind-edgeguard}"
+K8S_NAMESPACE="${K8S_NAMESPACE:-edgeguard}"
 POSTGRES_USER="${POSTGRES_USER:-edgeguard}"
 POSTGRES_DB="${POSTGRES_DB:-edgeguard}"
 E2E_TIMEOUT_SECONDS="${E2E_TIMEOUT_SECONDS:-120}"
@@ -20,6 +23,39 @@ json_post() {
 	local url="$1"
 	local body="$2"
 	curl -fsS -X POST "$url" -H "Content-Type: application/json" -d "$body"
+}
+
+postgres_exec() {
+	if [[ "$E2E_RUNTIME" == "kubernetes" ]]; then
+		kubectl --context "$KUBE_CONTEXT" -n "$K8S_NAMESPACE" exec -i postgres-0 -- "$@"
+	else
+		docker compose -f "$COMPOSE_FILE" exec -T postgres "$@"
+	fi
+}
+
+rabbitmq_exec() {
+	if [[ "$E2E_RUNTIME" == "kubernetes" ]]; then
+		kubectl --context "$KUBE_CONTEXT" -n "$K8S_NAMESPACE" exec -i rabbitmq-0 -- "$@"
+	else
+		docker compose -f "$COMPOSE_FILE" exec -T rabbitmq "$@"
+	fi
+}
+
+notification_exec() {
+	if [[ "$E2E_RUNTIME" == "kubernetes" ]]; then
+		kubectl --context "$KUBE_CONTEXT" -n "$K8S_NAMESPACE" exec -i deployment/notification-worker -- "$@"
+	else
+		docker compose -f "$COMPOSE_FILE" exec -T notification-worker "$@"
+	fi
+}
+
+notification_logs() {
+	if [[ "$E2E_RUNTIME" == "kubernetes" ]]; then
+		kubectl --context "$KUBE_CONTEXT" -n "$K8S_NAMESPACE" logs \
+			deployment/notification-worker --all-containers=true --tail=200
+	else
+		docker compose -f "$COMPOSE_FILE" logs --no-color --tail=200 notification-worker
+	fi
 }
 
 job_status() {
@@ -54,15 +90,13 @@ wait_for_job_status() {
 
 queue_ready_count() {
 	local queue="$1"
-	docker compose -f "$COMPOSE_FILE" exec -T rabbitmq \
-		rabbitmqctl -q list_queues -p edgeguard name messages_ready | \
+	rabbitmq_exec rabbitmqctl -q list_queues -p edgeguard name messages_ready | \
 		awk -v target="$queue" '$1 == target {print $2}' | tr -d '[:space:]'
 }
 
 dump_diagnostics() {
 	echo "--- background jobs ---" >&2
-	docker compose -f "$COMPOSE_FILE" exec -T postgres \
-		psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+	postgres_exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
 SELECT id, type, status, current_attempt, max_attempts, last_error,
        result_message, output_path, affected_rows, updated_at
 FROM background_jobs
@@ -71,13 +105,11 @@ LIMIT 20;
 " >&2 || true
 
 	echo "--- RabbitMQ queues ---" >&2
-	docker compose -f "$COMPOSE_FILE" exec -T rabbitmq \
-		rabbitmqctl -q list_queues -p edgeguard \
+	rabbitmq_exec rabbitmqctl -q list_queues -p edgeguard \
 		name messages_ready messages_unacknowledged consumers >&2 || true
 
 	echo "--- notification worker logs ---" >&2
-	docker compose -f "$COMPOSE_FILE" \
-		logs --no-color --tail=200 notification-worker >&2 || true
+	notification_logs >&2 || true
 }
 
 fail_with_diagnostics() {
@@ -86,8 +118,15 @@ fail_with_diagnostics() {
 }
 
 require_command curl
-require_command docker
 require_command jq
+if [[ "$E2E_RUNTIME" == "kubernetes" ]]; then
+	require_command kubectl
+elif [[ "$E2E_RUNTIME" == "compose" ]]; then
+	require_command docker
+else
+	echo "E2E_RUNTIME must be compose or kubernetes" >&2
+	exit 1
+fi
 
 if ! [[ "$E2E_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
 	echo "E2E_TIMEOUT_SECONDS must be a positive integer" >&2
@@ -102,7 +141,7 @@ trap 'status=$?; if ((status != 0)); then dump_diagnostics; fi' EXIT
 echo "Checking service health..."
 curl -fsS "${CONTROL_PLANE_URL}/health" >/dev/null
 curl -fsS "${GATEWAY_URL}/health" >/dev/null
-docker compose -f "$COMPOSE_FILE" exec -T rabbitmq rabbitmq-diagnostics -q ping >/dev/null
+rabbitmq_exec rabbitmq-diagnostics -q ping >/dev/null
 
 echo "Checking unknown job response..."
 unknown_status="$(curl -sS -o /dev/null -w '%{http_code}' \
@@ -216,12 +255,10 @@ if ! jq -e --arg suffix "/${REPORT_JOB_ID}.json" '
 	fail_with_diagnostics "unexpected report status: ${report_status}"
 fi
 
-docker compose -f "$COMPOSE_FILE" exec -T notification-worker \
-	test -f "/data/reports/${REPORT_JOB_ID}.json" || \
+notification_exec test -f "/data/reports/${REPORT_JOB_ID}.json" || \
 	fail_with_diagnostics "report file was not created"
 
-report_project_id="$(docker compose -f "$COMPOSE_FILE" exec -T notification-worker \
-	cat "/data/reports/${REPORT_JOB_ID}.json" | jq -r '.project_id')"
+report_project_id="$(notification_exec cat "/data/reports/${REPORT_JOB_ID}.json" | jq -r '.project_id')"
 if [[ "$report_project_id" != "$PROJECT_ID" ]]; then
 	fail_with_diagnostics "report project_id=${report_project_id}, want ${PROJECT_ID}"
 fi

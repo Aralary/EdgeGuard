@@ -10,7 +10,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/gateway ./cmd/gateway
 
 FROM alpine:3.22
 
-RUN adduser -D -g '' appuser
+RUN addgroup -g 10001 appgroup \
+    && adduser -D -u 10001 -G appgroup appuser
 
 WORKDIR /app
 
@@ -21,6 +22,6 @@ ENV GATEWAY_CONFIG_PATH=/app/configs/gateway.docker.yaml
 
 EXPOSE 8080
 
-USER appuser
+USER 10001:10001
 
 ENTRYPOINT ["/app/gateway"]

@@ -1,0 +1,47 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- ../../base
+- ingress.yaml
+
+patches:
+- path: secret-patch.yaml
+- path: configmap-patch.yaml
+
+replicas:
+- name: gateway
+  count: 1
+- name: control-plane
+  count: 1
+- name: auth
+  count: 1
+- name: analytics-worker
+  count: 1
+- name: notification-worker
+  count: 1
+- name: demo-backend
+  count: 1
+
+images:
+- name: ghcr.io/aralary/edgeguard-gateway
+  newName: edgeguard-gateway
+  newTag: local
+- name: ghcr.io/aralary/edgeguard-control-plane
+  newName: edgeguard-control-plane
+  newTag: local
+- name: ghcr.io/aralary/edgeguard-auth
+  newName: edgeguard-auth
+  newTag: local
+- name: ghcr.io/aralary/edgeguard-analytics-worker
+  newName: edgeguard-analytics-worker
+  newTag: local
+- name: ghcr.io/aralary/edgeguard-notification-worker
+  newName: edgeguard-notification-worker
+  newTag: local
+- name: ghcr.io/aralary/edgeguard-demo-backend
+  newName: edgeguard-demo-backend
+  newTag: local
+- name: ghcr.io/aralary/edgeguard-migrate
+  newName: edgeguard-migrate
+  newTag: local

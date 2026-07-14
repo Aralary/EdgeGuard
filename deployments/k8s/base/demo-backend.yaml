@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-backend
+  namespace: edgeguard
+  labels:
+    app.kubernetes.io/name: demo-backend
+    app.kubernetes.io/component: data-plane
+    app.kubernetes.io/part-of: edgeguard
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: demo-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: demo-backend
+        app.kubernetes.io/component: data-plane
+        app.kubernetes.io/part-of: edgeguard
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: /metrics
+        prometheus.io/port: '8081'
+    spec:
+      serviceAccountName: edgeguard-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+        runAsUser: 10001
+        runAsGroup: 10001
+      containers:
+      - name: demo-backend
+        image: ghcr.io/aralary/edgeguard-demo-backend:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8081
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: edgeguard-config
+        resources:
+          requests:
+            cpu: 25m
+            memory: 32Mi
+          limits:
+            cpu: 250m
+            memory: 128Mi
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          failureThreshold: 30
+          periodSeconds: 2
+          timeoutSeconds: 1
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 2
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: demo-backend
+  namespace: edgeguard
+  labels:
+    app.kubernetes.io/name: demo-backend
+    app.kubernetes.io/component: data-plane
+    app.kubernetes.io/part-of: edgeguard
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: demo-backend
+  ports:
+  - name: http
+    port: 8081
+    targetPort: http
+    protocol: TCP

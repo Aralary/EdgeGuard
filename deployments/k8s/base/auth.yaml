@@ -1,0 +1,178 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth
+  namespace: edgeguard
+  labels:
+    app.kubernetes.io/name: auth
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/part-of: edgeguard
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: auth
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: auth
+        app.kubernetes.io/component: control-plane
+        app.kubernetes.io/part-of: edgeguard
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: /metrics
+        prometheus.io/port: '8083'
+    spec:
+      serviceAccountName: edgeguard-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+        runAsUser: 10001
+        runAsGroup: 10001
+      initContainers:
+      - name: wait-for-users-table
+        image: postgres:16-alpine
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/sh
+        - -ec
+        - |
+          until result="$(PGPASSWORD="$POSTGRES_PASSWORD" psql \
+            --host=postgres \
+            --username="$POSTGRES_USER" \
+            --dbname="$POSTGRES_DB" \
+            --tuples-only \
+            --no-align \
+            --command="SELECT to_regclass('public.users') IS NOT NULL" 2>/dev/null)" \
+            && [ "$result" = "t" ]; do
+            echo "Waiting for PostgreSQL table: users"
+            sleep 2
+          done
+          echo "PostgreSQL table is ready: users"
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_DB
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+      containers:
+      - name: auth
+        image: ghcr.io/aralary/edgeguard-auth:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8083
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: edgeguard-config
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          failureThreshold: 30
+          periodSeconds: 2
+          timeoutSeconds: 1
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 2
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_DB
+        - name: POSTGRES_DSN
+          value: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)?sslmode=disable
+        - name: AUTH_JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: AUTH_JWT_SECRET
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth
+  namespace: edgeguard
+  labels:
+    app.kubernetes.io/name: auth
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/part-of: edgeguard
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: auth
+  ports:
+  - name: http
+    port: 8083
+    targetPort: http
+    protocol: TCP

@@ -1,0 +1,208 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: analytics-worker
+  namespace: edgeguard
+  labels:
+    app.kubernetes.io/name: analytics-worker
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: edgeguard
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: analytics-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: analytics-worker
+        app.kubernetes.io/component: worker
+        app.kubernetes.io/part-of: edgeguard
+      annotations:
+        prometheus.io/scrape: 'true'
+        prometheus.io/path: /metrics
+        prometheus.io/port: '8084'
+    spec:
+      serviceAccountName: edgeguard-app
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+        runAsUser: 10001
+        runAsGroup: 10001
+      initContainers:
+      - name: wait-for-gateway-access-events-table
+        image: postgres:16-alpine
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/sh
+        - -ec
+        - |
+          until result="$(PGPASSWORD="$POSTGRES_PASSWORD" psql \
+            --host=postgres \
+            --username="$POSTGRES_USER" \
+            --dbname="$POSTGRES_DB" \
+            --tuples-only \
+            --no-align \
+            --command="SELECT to_regclass('public.gateway_access_events') IS NOT NULL" 2>/dev/null)" \
+            && [ "$result" = "t" ]; do
+            echo "Waiting for PostgreSQL table: gateway_access_events"
+            sleep 2
+          done
+          echo "PostgreSQL table is ready: gateway_access_events"
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_DB
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+      - name: wait-for-kafka-topic
+        image: apache/kafka:4.3.1
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/bash
+        - -ec
+        - |
+          until /opt/kafka/bin/kafka-topics.sh \
+            --bootstrap-server kafka:9092 \
+            --describe \
+            --topic "$KAFKA_ACCESS_TOPIC" >/dev/null 2>&1; do
+            echo "Waiting for Kafka topic: $KAFKA_ACCESS_TOPIC"
+            sleep 2
+          done
+          echo "Kafka topic is ready: $KAFKA_ACCESS_TOPIC"
+        env:
+        - name: KAFKA_ACCESS_TOPIC
+          valueFrom:
+            configMapKeyRef:
+              name: edgeguard-config
+              key: KAFKA_ACCESS_TOPIC
+        resources:
+          requests:
+            cpu: 25m
+            memory: 128Mi
+          limits:
+            cpu: 250m
+            memory: 384Mi
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+      containers:
+      - name: analytics-worker
+        image: ghcr.io/aralary/edgeguard-analytics-worker:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: http
+          containerPort: 8084
+          protocol: TCP
+        envFrom:
+        - configMapRef:
+            name: edgeguard-config
+        resources:
+          requests:
+            cpu: 50m
+            memory: 96Mi
+          limits:
+            cpu: 500m
+            memory: 384Mi
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          failureThreshold: 30
+          periodSeconds: 2
+          timeoutSeconds: 1
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 2
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_DB
+        - name: POSTGRES_DSN
+          value: postgres://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@postgres:5432/$(POSTGRES_DB)?sslmode=disable
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: analytics-worker
+  namespace: edgeguard
+  labels:
+    app.kubernetes.io/name: analytics-worker
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: edgeguard
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: analytics-worker
+  ports:
+  - name: http
+    port: 8084
+    targetPort: http
+    protocol: TCP

@@ -7,6 +7,9 @@ GATEWAY_URL="${GATEWAY_URL:-http://localhost:8080}"
 ANALYTICS_URL="${ANALYTICS_URL:-http://localhost:8084}"
 UPSTREAM_URL="${UPSTREAM_URL:-http://demo-backend:8081}"
 COMPOSE_FILE="${COMPOSE_FILE:-deployments/docker-compose.yml}"
+E2E_RUNTIME="${E2E_RUNTIME:-compose}"
+KUBE_CONTEXT="${KUBE_CONTEXT:-kind-edgeguard}"
+K8S_NAMESPACE="${K8S_NAMESPACE:-edgeguard}"
 POSTGRES_USER="${POSTGRES_USER:-edgeguard}"
 POSTGRES_DB="${POSTGRES_DB:-edgeguard}"
 E2E_TIMEOUT_SECONDS="${E2E_TIMEOUT_SECONDS:-120}"
@@ -34,6 +37,31 @@ json_post() {
 	curl -fsS -X POST "$url" -H "Content-Type: application/json" -d "$body"
 }
 
+postgres_exec() {
+	if [[ "$E2E_RUNTIME" == "kubernetes" ]]; then
+		kubectl --context "$KUBE_CONTEXT" -n "$K8S_NAMESPACE" exec -i postgres-0 -- "$@"
+	else
+		docker compose -f "$COMPOSE_FILE" exec -T postgres "$@"
+	fi
+}
+
+kafka_exec() {
+	if [[ "$E2E_RUNTIME" == "kubernetes" ]]; then
+		kubectl --context "$KUBE_CONTEXT" -n "$K8S_NAMESPACE" exec -i kafka-0 -- "$@"
+	else
+		docker compose -f "$COMPOSE_FILE" exec -T kafka "$@"
+	fi
+}
+
+analytics_logs() {
+	if [[ "$E2E_RUNTIME" == "kubernetes" ]]; then
+		kubectl --context "$KUBE_CONTEXT" -n "$K8S_NAMESPACE" logs \
+			deployment/analytics-worker --all-containers=true --tail=100
+	else
+		docker compose -f "$COMPOSE_FILE" logs --no-color --tail=100 analytics-worker
+	fi
+}
+
 analytics_summary() {
 	curl -fsS --get \
 		"${ANALYTICS_URL}/api/v1/projects/${PROJECT_ID}/analytics/summary" \
@@ -42,8 +70,7 @@ analytics_summary() {
 }
 
 raw_event_count() {
-	docker compose -f "$COMPOSE_FILE" exec -T postgres \
-		psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "
+	postgres_exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "
 SELECT COUNT(*)
 FROM gateway_access_events
 WHERE project_id = '${PROJECT_ID}'::uuid
@@ -56,8 +83,7 @@ dump_diagnostics() {
 	analytics_summary 2>/dev/null | jq . >&2 || true
 
 	echo "--- raw events ---" >&2
-	docker compose -f "$COMPOSE_FILE" exec -T postgres \
-		psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+	postgres_exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
 SELECT request_id, occurred_at, status_code, duration_ms
 FROM gateway_access_events
 WHERE project_id = '${PROJECT_ID}'::uuid
@@ -66,8 +92,7 @@ ORDER BY occurred_at;
 " >&2 || true
 
 	echo "--- hourly aggregates ---" >&2
-	docker compose -f "$COMPOSE_FILE" exec -T postgres \
-		psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
+	postgres_exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "
 SELECT bucket_start, method, request_count, status_2xx_count,
        status_4xx_count, status_5xx_count
 FROM gateway_route_stats_hourly
@@ -77,20 +102,25 @@ ORDER BY bucket_start;
 " >&2 || true
 
 	echo "--- analytics worker logs ---" >&2
-	docker compose -f "$COMPOSE_FILE" \
-		logs --no-color --tail=100 analytics-worker >&2 || true
+	analytics_logs >&2 || true
 
 	echo "--- analytics consumer group ---" >&2
-	docker compose -f "$COMPOSE_FILE" exec -T kafka \
-		/opt/kafka/bin/kafka-consumer-groups.sh \
+	kafka_exec /opt/kafka/bin/kafka-consumer-groups.sh \
 		--bootstrap-server localhost:9092 \
 		--describe \
 		--group edgeguard-analytics-v1 >&2 || true
 }
 
 require_command curl
-require_command docker
 require_command jq
+if [[ "$E2E_RUNTIME" == "kubernetes" ]]; then
+	require_command kubectl
+elif [[ "$E2E_RUNTIME" == "compose" ]]; then
+	require_command docker
+else
+	echo "E2E_RUNTIME must be compose or kubernetes" >&2
+	exit 1
+fi
 require_positive_integer E2E_TIMEOUT_SECONDS "$E2E_TIMEOUT_SECONDS"
 require_positive_integer REQUESTS_TO_SEND "$REQUESTS_TO_SEND"
 

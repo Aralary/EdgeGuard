@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: edgeguard
+  labels:
+    app.kubernetes.io/name: edgeguard
+    app.kubernetes.io/part-of: edgeguard

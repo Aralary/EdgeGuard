@@ -10,7 +10,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /bin/control-plane ./cmd/control-plane
 
 FROM alpine:3.22
 
-RUN adduser -D -g '' appuser
+RUN addgroup -g 10001 appgroup \
+    && adduser -D -u 10001 -G appgroup appuser
 
 WORKDIR /app
 
@@ -18,6 +19,6 @@ COPY --from=builder /bin/control-plane /app/control-plane
 
 EXPOSE 8082
 
-USER appuser
+USER 10001:10001
 
 ENTRYPOINT ["/app/control-plane"]

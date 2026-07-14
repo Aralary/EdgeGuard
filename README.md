@@ -203,12 +203,19 @@ edgeguard
 │   │   ├── auth.Dockerfile
 │   │   └── migrations.Dockerfile
 │   └── k8s
+│       ├── base
+│       ├── kind
+│       │   └── cluster.yaml
+│       └── overlays
+│           └── local
+│
+├── scripts
+│   ├── e2e
+│   └── k8s
 │
 ├── migrations
 ├── docs
-│   ├── architecture.md
-│   ├── system-design.md
-│   └── adr
+│   └── kubernetes.md
 │
 ├── api
 │   └── openapi.yaml
@@ -220,7 +227,7 @@ edgeguard
 
 ## Локальный запуск
 
-Вся инфраструктура MVP9 запускается одной командой:
+Полная инфраструктура через Docker Compose запускается одной командой:
 
 ```bash
 make compose-up
@@ -590,15 +597,24 @@ admin / admin
 
 ### MVP 10 — Kubernetes Deployment
 
-* Kubernetes manifests
-* ConfigMap
-* Secret
-* Deployment
-* Service
-* Ingress
-* Liveness probe
-* Readiness probe
-* Resource limits
+Реализован локальный production-like Kubernetes-стенд:
+
+* Kustomize `base` для application workloads, stateful-инфраструктуры и observability;
+* локальный overlay с development-секретами, одной репликой каждого приложения и образами `edgeguard-*:local`;
+* Kind-кластер из control-plane и worker node;
+* PostgreSQL, Redis, Kafka в KRaft-режиме и RabbitMQ с persistent volumes;
+* Prometheus, OpenTelemetry Collector, Tempo и Grafana с provisioning;
+* отдельные Job для Goose-миграций и создания Kafka topic;
+* `startup`, `liveness` и `readiness` probes;
+* resource requests/limits и hardened container security context;
+* Ingress для Gateway через Cloud Provider KIND;
+* сборка и загрузка локальных Docker-образов в Kind;
+* повторяемый `make k8s-up`, включая пересоздание init Job и rollout приложений;
+* Kubernetes smoke-тест и полный E2E-набор MVP4–MVP9.
+
+Локальная конфигурация не является HA-развёртыванием: stateful-компоненты работают в одной реплике и предназначены для разработки и демонстрации проекта.
+
+Подробное описание архитектуры стенда, порядка запуска, проверок и диагностики находится в [Kubernetes-гайде](docs/kubernetes.md).
 
 ## Технологический стек
 
@@ -617,7 +633,7 @@ admin / admin
 * **Containers:** Docker, Docker Compose
 * **Deployment:** Kubernetes
 * **Testing:** testing, testify, testcontainers-go
-* **CI/CD:** GitHub Actions
+* **CI/CD:** GitHub Actions — отдельный следующий этап
 
 ## Локальный запуск
 
@@ -673,6 +689,119 @@ curl http://localhost:3000/api/health
 ```
 
 После создания маршрута через Control Plane Gateway подхватит его не позднее чем через `ROUTES_REFRESH_INTERVAL` и начнет проксировать соответствующие запросы без перезапуска.
+
+### Запуск через Kubernetes (Kind)
+
+Полная документация: [docs/kubernetes.md](docs/kubernetes.md).
+
+Для локального Kubernetes-стенда необходимы:
+
+```text
+Docker
+kind
+kubectl
+curl
+jq
+```
+
+Перед запуском рекомендуется остановить Docker Compose, чтобы не расходовать ресурсы на два одинаковых стенда:
+
+```bash
+make compose-down
+```
+
+Проверить итоговый manifest без подключения к кластеру:
+
+```bash
+make k8s-render > /tmp/edgeguard-k8s.yaml
+```
+
+Создать Kind-кластер, собрать и загрузить локальные образы, применить манифесты, дождаться readiness и выполнить smoke-тест:
+
+```bash
+make k8s-up
+```
+
+Команда использует кластер `edgeguard` и контекст `kind-edgeguard`. Все вызовы `kubectl` в Makefile передают контекст явно, поэтому ранее выбранный неработающий context в `~/.kube/config` не влияет на стенд.
+
+Порядок запуска:
+
+```text
+Kind cluster
+    ↓
+Cloud Provider KIND
+    ↓
+сборка edgeguard-*:local
+    ↓
+kind load docker-image
+    ↓
+server-side dry-run
+    ↓
+Kustomize apply
+    ↓
+PostgreSQL и Goose migrations
+    ↓
+Kafka и topic init Job
+    ↓
+Redis и RabbitMQ
+    ↓
+EdgeGuard applications
+    ↓
+Prometheus, OTel Collector, Tempo, Grafana
+    ↓
+Ingress и smoke-test
+```
+
+Повторный `make k8s-up` безопасно пересоздаёт migration/topic Job и выполняет rollout приложений, чтобы Pod получили заново собранные образы с тегом `:local`.
+
+Проверить состояние:
+
+```bash
+make k8s-status
+```
+
+Получить адрес Gateway через Ingress:
+
+```bash
+INGRESS_IP="$(kubectl --context kind-edgeguard \
+  -n edgeguard get ingress edgeguard \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')"
+
+curl "http://${INGRESS_IP}/health"
+curl "http://${INGRESS_IP}/ready"
+```
+
+Повторно запустить проверки:
+
+```bash
+make k8s-smoke-test
+make k8s-e2e-test
+```
+
+`k8s-e2e-test` запускает те же сценарии MVP4–MVP9, что и Compose-вариант, но использует Ingress, временные `kubectl port-forward` и `kubectl exec`.
+
+Просмотреть логи:
+
+```bash
+make k8s-logs
+```
+
+Открыть Grafana локально:
+
+```bash
+kubectl --context kind-edgeguard \
+  -n edgeguard port-forward service/grafana 3000:3000
+```
+
+После этого Grafana доступна на `http://localhost:3000`, локальные учётные данные — `admin / admin`.
+
+Остановить и удалить весь Kind-кластер вместе с локальными PersistentVolume:
+
+```bash
+make k8s-down
+```
+
+Файл `deployments/k8s/overlays/local/secret-patch.yaml` содержит только development-значения. Для production секреты должны поступать из внешнего secret manager, CI/CD или environment-specific overlay.
 
 ### E2E-проверка динамической конфигурации
 
@@ -933,8 +1062,16 @@ E2E_TIMEOUT_SECONDS=180 make e2e-observability-test
 Текущий реализованный этап:
 
 ```text
-MVP 9 — Observability
+MVP 10 — Kubernetes Deployment — завершён
 ```
+
+Следующий необязательный этап:
+
+```text
+GitHub Actions CI — unit tests, static checks, Docker build и проверка Kustomize
+```
+
+CI следует реализовывать отдельным коммитом: он автоматизирует проверку уже завершённого MVP10, но не входит в локальный Kubernetes deployment.
 
 ## License
 

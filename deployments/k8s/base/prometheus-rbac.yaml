@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: edgeguard-prometheus
+  namespace: edgeguard
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: edgeguard
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: edgeguard-prometheus-discovery
+  namespace: edgeguard
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: edgeguard
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: edgeguard-prometheus-discovery
+  namespace: edgeguard
+  labels:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/component: monitoring
+    app.kubernetes.io/part-of: edgeguard
+subjects:
+  - kind: ServiceAccount
+    name: edgeguard-prometheus
+    namespace: edgeguard
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: edgeguard-prometheus-discovery

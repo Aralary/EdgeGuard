@@ -1,0 +1,48 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: edgeguard
+commonLabels:
+  app.kubernetes.io/part-of: edgeguard
+  app.kubernetes.io/managed-by: kustomize
+resources:
+  - namespace.yaml
+  - service-account.yaml
+  - configmap.yaml
+  - secret.yaml
+  - postgres.yaml
+  - redis.yaml
+  - kafka.yaml
+  - kafka-init-job.yaml
+  - rabbitmq.yaml
+  - reports-pvc.yaml
+  - migrations-job.yaml
+  - prometheus-rbac.yaml
+  - prometheus.yaml
+  - tempo.yaml
+  - otel-collector.yaml
+  - grafana.yaml
+  - gateway.yaml
+  - control-plane.yaml
+  - auth.yaml
+  - analytics-worker.yaml
+  - notification-worker.yaml
+  - demo-backend.yaml
+configMapGenerator:
+  - name: prometheus-config
+    files:
+      - prometheus.yml=observability/prometheus.yml
+  - name: otel-collector-config
+    files:
+      - otel-collector.yml=observability/otel-collector.yml
+  - name: tempo-config
+    files:
+      - tempo.yml=observability/tempo.yml
+  - name: grafana-datasources
+    files:
+      - datasources.yml=observability/grafana/provisioning/datasources/datasources.yml
+  - name: grafana-dashboard-providers
+    files:
+      - dashboards.yml=observability/grafana/provisioning/dashboards/dashboards.yml
+  - name: grafana-dashboards
+    files:
+      - edgeguard-overview.json=observability/grafana/dashboards/edgeguard-overview.json
