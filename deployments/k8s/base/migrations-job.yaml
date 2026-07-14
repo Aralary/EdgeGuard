@@ -25,6 +25,48 @@ spec:
           type: RuntimeDefault
         runAsUser: 10001
         runAsGroup: 10001
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:16-alpine
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/sh
+        - -ec
+        - |
+          until pg_isready --host=postgres --username="$POSTGRES_USER" --dbname="$POSTGRES_DB"; do
+            echo "Waiting for PostgreSQL"
+            sleep 2
+          done
+          echo "PostgreSQL is ready"
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_DB
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
       containers:
       - name: migrations
         image: ghcr.io/aralary/edgeguard-migrate:latest

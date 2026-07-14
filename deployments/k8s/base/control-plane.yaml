@@ -39,6 +39,80 @@ spec:
           type: RuntimeDefault
         runAsUser: 10001
         runAsGroup: 10001
+      initContainers:
+      - name: wait-for-background-jobs-table
+        image: postgres:16-alpine
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/sh
+        - -ec
+        - |
+          until result="$(PGPASSWORD="$POSTGRES_PASSWORD" psql \
+            --host=postgres \
+            --username="$POSTGRES_USER" \
+            --dbname="$POSTGRES_DB" \
+            --tuples-only \
+            --no-align \
+            --command="SELECT to_regclass('public.background_jobs') IS NOT NULL" 2>/dev/null)" \
+            && [ "$result" = "t" ]; do
+            echo "Waiting for PostgreSQL table: background_jobs"
+            sleep 2
+          done
+          echo "PostgreSQL table is ready: background_jobs"
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          valueFrom:
+            secretKeyRef:
+              name: edgeguard-secrets
+              key: POSTGRES_DB
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 100m
+            memory: 64Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+      - name: wait-for-rabbitmq
+        image: busybox:1.37.0
+        imagePullPolicy: IfNotPresent
+        command:
+        - /bin/sh
+        - -ec
+        - |
+          until nc -z -w 2 rabbitmq 5672; do
+            echo "Waiting for RabbitMQ"
+            sleep 2
+          done
+          echo "RabbitMQ is ready"
+        resources:
+          requests:
+            cpu: 5m
+            memory: 8Mi
+          limits:
+            cpu: 50m
+            memory: 32Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
       containers:
       - name: control-plane
         image: ghcr.io/aralary/edgeguard-control-plane:latest

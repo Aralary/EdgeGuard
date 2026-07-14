@@ -1,0 +1,104 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-init
+  namespace: edgeguard
+  labels:
+    app.kubernetes.io/name: kafka-init
+    app.kubernetes.io/component: event-streaming-init
+    app.kubernetes.io/part-of: edgeguard
+spec:
+  backoffLimit: 10
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: kafka-init
+        app.kubernetes.io/component: event-streaming-init
+        app.kubernetes.io/part-of: edgeguard
+    spec:
+      serviceAccountName: edgeguard-app
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: kafka-init
+          image: apache/kafka:4.3.1
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: kafka:9092
+            - name: KAFKA_ACCESS_TOPIC
+              valueFrom:
+                configMapKeyRef:
+                  name: edgeguard-config
+                  key: KAFKA_ACCESS_TOPIC
+            - name: KAFKA_ACCESS_TOPIC_PARTITIONS
+              value: "3"
+            - name: KAFKA_ACCESS_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_INIT_MAX_ATTEMPTS
+              value: "60"
+            - name: KAFKA_INIT_RETRY_INTERVAL_SECONDS
+              value: "2"
+          command:
+            - /bin/bash
+            - -ec
+            - |
+              topic="${KAFKA_ACCESS_TOPIC}"
+              bootstrap_servers="${KAFKA_BOOTSTRAP_SERVERS}"
+              partitions="${KAFKA_ACCESS_TOPIC_PARTITIONS}"
+              replication_factor="${KAFKA_ACCESS_TOPIC_REPLICATION_FACTOR}"
+              max_attempts="${KAFKA_INIT_MAX_ATTEMPTS}"
+              retry_interval="${KAFKA_INIT_RETRY_INTERVAL_SECONDS}"
+              kafka_topics=/opt/kafka/bin/kafka-topics.sh
+
+              echo "Initializing Kafka topic: ${topic}"
+
+              for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+                if "${kafka_topics}" \
+                  --bootstrap-server "${bootstrap_servers}" \
+                  --describe \
+                  --topic "${topic}" >/dev/null 2>&1; then
+                  echo "Kafka topic is ready: ${topic}"
+                  exit 0
+                fi
+
+                echo "Creating Kafka topic: topic=${topic} attempt=${attempt}/${max_attempts}"
+
+                if ! "${kafka_topics}" \
+                  --bootstrap-server "${bootstrap_servers}" \
+                  --create \
+                  --if-not-exists \
+                  --topic "${topic}" \
+                  --partitions "${partitions}" \
+                  --replication-factor "${replication_factor}"; then
+                  echo "Kafka topic creation attempt failed" >&2
+                fi
+
+                if "${kafka_topics}" \
+                  --bootstrap-server "${bootstrap_servers}" \
+                  --describe \
+                  --topic "${topic}" >/dev/null 2>&1; then
+                  echo "Kafka topic created and verified: ${topic}"
+                  exit 0
+                fi
+
+                sleep "${retry_interval}"
+              done
+
+              echo "Kafka topic was not created after ${max_attempts} attempts: ${topic}" >&2
+              exit 1
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
