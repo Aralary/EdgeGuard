@@ -424,6 +424,27 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  grafana:
+    image: grafana/grafana:13.0.3
+    container_name: edgeguard-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/edgeguard-overview.json
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro,Z
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro,Z
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      tempo:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   kafka_data:
@@ -431,3 +452,4 @@ volumes:
   reports_data:
   prometheus_data:
   tempo_data:
+  grafana_data:

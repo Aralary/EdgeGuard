@@ -1,6 +1,6 @@
 COMPOSE := docker compose -f deployments/docker-compose.yml
 
-.PHONY: run-gateway run-demo run-control-plane run-auth run-analytics run-notification compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps wait-prometheus wait-tracing smoke-test e2e-test e2e-auth-test e2e-rate-limit-test e2e-analytics-test e2e-jobs-test migrate-up migrate-down migrate-status test fmt tidy
+.PHONY: run-gateway run-demo run-control-plane run-auth run-analytics run-notification compose-build compose-rebuild compose-up compose-down compose-reset compose-logs compose-ps wait-prometheus wait-tracing wait-grafana smoke-test e2e-test e2e-auth-test e2e-rate-limit-test e2e-analytics-test e2e-jobs-test e2e-observability-test migrate-up migrate-down migrate-status test fmt tidy
 
 run-gateway:
 	go run ./cmd/gateway
@@ -69,6 +69,20 @@ wait-tracing:
 	$(COMPOSE) logs --no-color --tail=100 otel-collector tempo >&2; \
 	exit 1
 
+wait-grafana:
+	@echo "Waiting for Grafana readiness..."
+	@for attempt in $$(seq 1 30); do \
+		if curl -fsS http://localhost:3000/api/health >/dev/null 2>&1; then \
+			echo "Grafana: ready"; \
+			exit 0; \
+		fi; \
+		sleep 2; \
+	done; \
+	echo "Grafana did not become ready" >&2; \
+	$(COMPOSE) ps -a grafana >&2; \
+	$(COMPOSE) logs --no-color --tail=100 grafana >&2; \
+	exit 1
+
 smoke-test:
 	curl -fsS http://localhost:8080/health
 	@echo
@@ -94,6 +108,8 @@ smoke-test:
 	@echo
 	@$(MAKE) --no-print-directory wait-tracing
 	@echo
+	@$(MAKE) --no-print-directory wait-grafana
+	@echo
 	curl -fsS http://localhost:8082/internal/v1/routes
 	@echo
 	@$(COMPOSE) exec -T redis redis-cli ping | grep -q PONG
@@ -113,6 +129,7 @@ e2e-test:
 	./scripts/e2e/mvp6_rate_limiting.sh
 	./scripts/e2e/mvp7_analytics.sh
 	./scripts/e2e/mvp8_background_jobs.sh
+	./scripts/e2e/mvp9_observability.sh
 
 e2e-auth-test:
 	./scripts/e2e/mvp5_api_key_auth.sh
@@ -125,6 +142,9 @@ e2e-analytics-test:
 
 e2e-jobs-test:
 	./scripts/e2e/mvp8_background_jobs.sh
+
+e2e-observability-test:
+	./scripts/e2e/mvp9_observability.sh
 
 migrate-up:
 	$(COMPOSE) run --rm migrate up
