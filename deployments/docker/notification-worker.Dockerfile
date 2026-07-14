@@ -13,7 +13,7 @@ FROM alpine:3.22
 RUN addgroup -g 10001 appgroup \
     && adduser -D -u 10001 -G appgroup appuser \
     && mkdir -p /data/reports \
-    && chown -R appuser:appuser /data
+    && chown -R 10001:10001 /data
 
 WORKDIR /app
 
