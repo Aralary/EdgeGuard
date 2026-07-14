@@ -57,6 +57,11 @@ spec:
               containerPort: 5432
               protocol: TCP
           env:
+            # Keep the actual PostgreSQL data directory below the PVC mount root.
+            # The mount root can remain owned by root while fsGroup grants write access;
+            # PostgreSQL then creates this child directory as UID/GID 70.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:

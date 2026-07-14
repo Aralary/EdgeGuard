@@ -11,6 +11,9 @@ GRAFANA_USER="${GRAFANA_USER:-admin}"
 GRAFANA_PASSWORD="${GRAFANA_PASSWORD:-admin}"
 UPSTREAM_URL="${UPSTREAM_URL:-http://demo-backend:8081}"
 COMPOSE_FILE="${COMPOSE_FILE:-deployments/docker-compose.yml}"
+E2E_RUNTIME="${E2E_RUNTIME:-compose}"
+KUBE_CONTEXT="${KUBE_CONTEXT:-kind-edgeguard}"
+K8S_NAMESPACE="${K8S_NAMESPACE:-edgeguard}"
 E2E_TIMEOUT_SECONDS="${E2E_TIMEOUT_SECONDS:-120}"
 
 require_command() {
@@ -33,6 +36,19 @@ json_post() {
 	local url="$1"
 	local body="$2"
 	curl -fsS -X POST "$url" -H "Content-Type: application/json" -d "$body"
+}
+
+observability_logs() {
+	if [[ "$E2E_RUNTIME" == "kubernetes" ]]; then
+		for resource in statefulset/prometheus statefulset/tempo deployment/otel-collector statefulset/grafana; do
+			echo "--- ${resource} ---" >&2
+			kubectl --context "$KUBE_CONTEXT" -n "$K8S_NAMESPACE" logs \
+				"$resource" --all-containers=true --tail=100 >&2 || true
+		done
+	else
+		docker compose -f "$COMPOSE_FILE" logs --no-color --tail=100 \
+			prometheus tempo otel-collector grafana >&2 || true
+	fi
 }
 
 trace_id_from_headers() {
@@ -123,14 +139,20 @@ dump_diagnostics() {
 	echo "--- Grafana health ---" >&2
 	curl -fsS "${GRAFANA_URL}/api/health" | jq . >&2 || true
 
-	echo "--- observability container logs ---" >&2
-	docker compose -f "$COMPOSE_FILE" logs --no-color --tail=100 \
-		prometheus tempo otel-collector grafana >&2 || true
+	echo "--- observability logs ---" >&2
+	observability_logs
 }
 
 require_command curl
-require_command docker
 require_command jq
+if [[ "$E2E_RUNTIME" == "kubernetes" ]]; then
+	require_command kubectl
+elif [[ "$E2E_RUNTIME" == "compose" ]]; then
+	require_command docker
+else
+	echo "E2E_RUNTIME must be compose or kubernetes" >&2
+	exit 1
+fi
 require_positive_integer E2E_TIMEOUT_SECONDS "$E2E_TIMEOUT_SECONDS"
 
 RUN_ID="$(date +%s)-$$-${RANDOM}"
