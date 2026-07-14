@@ -215,9 +215,7 @@ edgeguard
 │
 ├── migrations
 ├── docs
-│   ├── architecture.md
-│   ├── system-design.md
-│   └── adr
+│   └── kubernetes.md
 │
 ├── api
 │   └── openapi.yaml
@@ -616,6 +614,8 @@ admin / admin
 
 Локальная конфигурация не является HA-развёртыванием: stateful-компоненты работают в одной реплике и предназначены для разработки и демонстрации проекта.
 
+Подробное описание архитектуры стенда, порядка запуска, проверок и диагностики находится в [Kubernetes-гайде](docs/kubernetes.md).
+
 ## Технологический стек
 
 Планируемые технологии:
@@ -633,7 +633,7 @@ admin / admin
 * **Containers:** Docker, Docker Compose
 * **Deployment:** Kubernetes
 * **Testing:** testing, testify, testcontainers-go
-* **CI/CD:** GitHub Actions
+* **CI/CD:** GitHub Actions — отдельный следующий этап
 
 ## Локальный запуск
 
@@ -691,6 +691,8 @@ curl http://localhost:3000/api/health
 После создания маршрута через Control Plane Gateway подхватит его не позднее чем через `ROUTES_REFRESH_INTERVAL` и начнет проксировать соответствующие запросы без перезапуска.
 
 ### Запуск через Kubernetes (Kind)
+
+Полная документация: [docs/kubernetes.md](docs/kubernetes.md).
 
 Для локального Kubernetes-стенда необходимы:
 
@@ -1060,8 +1062,16 @@ E2E_TIMEOUT_SECONDS=180 make e2e-observability-test
 Текущий реализованный этап:
 
 ```text
-MVP 10 — Kubernetes Deployment
+MVP 10 — Kubernetes Deployment — завершён
 ```
+
+Следующий необязательный этап:
+
+```text
+GitHub Actions CI — unit tests, static checks, Docker build и проверка Kustomize
+```
+
+CI следует реализовывать отдельным коммитом: он автоматизирует проверку уже завершённого MVP10, но не входит в локальный Kubernetes deployment.
 
 ## License
 
