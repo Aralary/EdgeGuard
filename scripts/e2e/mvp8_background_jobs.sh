@@ -135,6 +135,11 @@ fi
 
 RUN_ID="$(date +%s)-$$-${RANDOM}"
 ORDER_ID="mvp8-order-${RUN_ID}"
+PROJECT_NAME="mvp8-project-${RUN_ID}"
+SERVICE_NAME="mvp8-demo-backend-${RUN_ID}"
+ROUTE_NAME="mvp8-verification-route-${RUN_ID}"
+PATH_PREFIX="/mvp8-${RUN_ID}"
+GATEWAY_ORDERS_URL="${GATEWAY_URL}${PATH_PREFIX}/orders"
 
 trap 'status=$?; if ((status != 0)); then dump_diagnostics; fi' EXIT
 
@@ -148,6 +153,48 @@ unknown_status="$(curl -sS -o /dev/null -w '%{http_code}' \
 	"${CONTROL_PLANE_URL}/api/v1/jobs/missing-${RUN_ID}")"
 if [[ "$unknown_status" != "404" ]]; then
 	fail_with_diagnostics "unknown job returned HTTP ${unknown_status}, want 404"
+fi
+
+echo "Creating project and route for webhook verification..."
+project_response="$(json_post \
+	"${CONTROL_PLANE_URL}/api/v1/projects" \
+	"$(jq -nc --arg name "$PROJECT_NAME" '{name: $name}')")"
+PROJECT_ID="$(jq -er '.id | strings | select(length > 0)' <<<"$project_response")"
+
+service_response="$(json_post \
+	"${CONTROL_PLANE_URL}/api/v1/projects/${PROJECT_ID}/services" \
+	"$(jq -nc \
+		--arg name "$SERVICE_NAME" \
+		--arg upstream_url 'http://demo-backend:8081' \
+		'{name: $name, upstream_url: $upstream_url}')")"
+SERVICE_ID="$(jq -er '.id | strings | select(length > 0)' <<<"$service_response")"
+
+route_response="$(json_post \
+	"${CONTROL_PLANE_URL}/api/v1/services/${SERVICE_ID}/routes" \
+	"$(jq -nc \
+		--arg name "$ROUTE_NAME" \
+		--arg path_prefix "$PATH_PREFIX" \
+		'{
+			name: $name,
+			path_prefix: $path_prefix,
+			strip_prefix: true,
+			timeout_ms: 3000,
+			enabled: true
+		}')")"
+ROUTE_ID="$(jq -er '.id | strings | select(length > 0)' <<<"$route_response")"
+
+echo "Waiting for Gateway to apply the MVP8 verification route..."
+deadline=$((SECONDS + E2E_TIMEOUT_SECONDS))
+route_status=""
+while ((SECONDS < deadline)); do
+	route_status="$(curl -sS -o /dev/null -w '%{http_code}' "$GATEWAY_ORDERS_URL" || true)"
+	if [[ "$route_status" == "200" ]]; then
+		break
+	fi
+	sleep 1
+done
+if [[ "$route_status" != "200" ]]; then
+	fail_with_diagnostics "Gateway did not apply MVP8 route ${PATH_PREFIX}; last HTTP status: ${route_status:-request failed}"
 fi
 
 echo "Submitting successful webhook job..."
@@ -176,7 +223,7 @@ if ! jq -e '
 	fail_with_diagnostics "unexpected successful webhook status: ${webhook_status}"
 fi
 
-order_response="$(curl -fsS "${GATEWAY_URL}/api/v1/orders/${ORDER_ID}")"
+order_response="$(curl -fsS "${GATEWAY_ORDERS_URL}/${ORDER_ID}")"
 if ! jq -e --arg id "$ORDER_ID" '.id == $id and .amount == 1500' <<<"$order_response" >/dev/null; then
 	fail_with_diagnostics "webhook did not create expected order: ${order_response}"
 fi
@@ -226,11 +273,7 @@ if ! [[ "$dead_before" =~ ^[0-9]+$ && "$dead_after" =~ ^[0-9]+$ ]] || ((dead_aft
 	fail_with_diagnostics "DLQ messages_ready=${dead_after}, want at least $((dead_before + 2))"
 fi
 
-echo "Creating project for report job..."
-project_response="$(json_post \
-	"${CONTROL_PLANE_URL}/api/v1/projects" \
-	"$(jq -nc --arg name "mvp8-report-project-${RUN_ID}" '{name: $name}')")"
-PROJECT_ID="$(jq -er '.id | strings | select(length > 0)' <<<"$project_response")"
+echo "Submitting report job..."
 FROM="$(date -u -d '24 hours ago' +'%Y-%m-%dT%H:%M:%SZ')"
 TO="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
@@ -280,6 +323,9 @@ fi
 trap - EXIT
 
 echo "MVP8 background jobs E2E test passed"
+echo "project_id=${PROJECT_ID}"
+echo "service_id=${SERVICE_ID}"
+echo "route_id=${ROUTE_ID}"
 echo "webhook_job_id=${WEBHOOK_JOB_ID}"
 echo "permanent_failure_job_id=${PERMANENT_JOB_ID}"
 echo "retry_failure_job_id=${RETRY_JOB_ID}"
