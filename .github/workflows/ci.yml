@@ -1,0 +1,209 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      run_kubernetes_e2e:
+        description: Run the full Kubernetes smoke and E2E suite
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  KIND_VERSION: v0.31.0
+  KIND_NODE_IMAGE: kindest/node:v1.35.0
+
+jobs:
+  go-quality:
+    name: Go quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download modules
+        run: go mod download
+
+      - name: Verify formatting
+        run: |
+          unformatted="$({
+            find . -type f -name '*.go' -not -path './vendor/*' -print0 \
+              | xargs -0 -r gofmt -l
+          })"
+
+          if [[ -n "${unformatted}" ]]; then
+            echo "The following Go files are not formatted:" >&2
+            echo "${unformatted}" >&2
+            exit 1
+          fi
+
+      - name: Verify module files
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run unit tests with race detector
+        run: go test -race -count=1 ./...
+
+  compose-e2e:
+    name: Docker Compose smoke and E2E
+    needs: go-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Show Docker environment
+        run: |
+          docker version
+          docker compose version
+          jq --version
+          curl --version | head -n 1
+
+      - name: Validate Docker Compose configuration
+        run: docker compose -f deployments/docker-compose.yml config --quiet
+
+      - name: Start EdgeGuard
+        run: make compose-up
+
+      - name: Run smoke tests
+        run: make smoke-test
+
+      - name: Run E2E tests
+        run: make e2e-test
+
+      - name: Show diagnostics
+        if: failure()
+        run: |
+          docker compose -f deployments/docker-compose.yml ps -a || true
+          docker compose -f deployments/docker-compose.yml \
+            logs --no-color --tail=300 || true
+
+      - name: Stop EdgeGuard
+        if: always()
+        run: make compose-reset || true
+
+  kubernetes-manifests:
+    name: Kubernetes manifests
+    needs: go-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Kind
+        run: |
+          GOBIN="${RUNNER_TEMP}/bin" go install "sigs.k8s.io/kind@${KIND_VERSION}"
+          sudo install -m 0755 "${RUNNER_TEMP}/bin/kind" /usr/local/bin/kind
+          kind version
+
+      - name: Show kubectl version
+        run: kubectl version --client
+
+      - name: Render local Kustomize overlay
+        run: |
+          make k8s-render > "${RUNNER_TEMP}/edgeguard-k8s.yaml"
+          test -s "${RUNNER_TEMP}/edgeguard-k8s.yaml"
+          echo "Rendered Kubernetes objects:"
+          grep -c '^kind:' "${RUNNER_TEMP}/edgeguard-k8s.yaml"
+
+      - name: Create validation cluster
+        run: |
+          kind create cluster \
+            --name edgeguard-ci \
+            --image "${KIND_NODE_IMAGE}" \
+            --config deployments/k8s/kind/cluster.yaml \
+            --wait 120s
+
+      - name: Run server-side validation
+        run: |
+          make k8s-validate \
+            KIND_CLUSTER_NAME=edgeguard-ci \
+            KUBE_CONTEXT=kind-edgeguard-ci
+
+      - name: Show Kubernetes diagnostics
+        if: failure()
+        run: |
+          kubectl --context kind-edgeguard-ci get nodes -o wide || true
+          kubectl --context kind-edgeguard-ci \
+            get events --all-namespaces --sort-by=.lastTimestamp || true
+
+      - name: Delete validation cluster
+        if: always()
+        run: kind delete cluster --name edgeguard-ci || true
+
+  kubernetes-e2e:
+    name: Kubernetes smoke and E2E
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_kubernetes_e2e }}
+    needs: go-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Kind
+        run: |
+          GOBIN="${RUNNER_TEMP}/bin" go install "sigs.k8s.io/kind@${KIND_VERSION}"
+          sudo install -m 0755 "${RUNNER_TEMP}/bin/kind" /usr/local/bin/kind
+          kind version
+
+      - name: Start Kubernetes environment
+        run: make k8s-up K8S_TIMEOUT_SECONDS=600
+
+      - name: Run Kubernetes E2E tests
+        run: make k8s-e2e-test K8S_TIMEOUT_SECONDS=600
+
+      - name: Show Kubernetes diagnostics
+        if: failure()
+        run: |
+          make k8s-status || true
+          kubectl --context kind-edgeguard -n edgeguard \
+            get events --sort-by=.lastTimestamp || true
+          make k8s-logs || true
+          docker logs --tail=300 edgeguard-cloud-provider-kind || true
+
+      - name: Delete Kubernetes environment
+        if: always()
+        run: make k8s-down || true

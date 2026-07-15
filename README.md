@@ -1,5 +1,7 @@
 # EdgeGuard
 
+[![CI](https://github.com/aralary/edgeguard/actions/workflows/ci.yml/badge.svg)](https://github.com/aralary/edgeguard/actions/workflows/ci.yml)
+
 **EdgeGuard** — API Gateway платформа на Go для публикации, защиты и мониторинга backend-сервисов.
 
 Проект разрабатывается как production-like backend-система и демонстрирует типовые задачи backend-разработки: reverse proxy, управление маршрутами, авторизацию, rate limiting, асинхронную обработку событий, аналитику трафика, observability и контейнеризацию.
@@ -169,6 +171,10 @@ Traces from all services                 ^
 
 ```text
 edgeguard
+├── .github
+│   └── workflows
+│       └── ci.yml
+│
 ├── cmd
 │   ├── gateway
 │   │   └── main.go
@@ -215,6 +221,7 @@ edgeguard
 │
 ├── migrations
 ├── docs
+│   ├── ci.md
 │   └── kubernetes.md
 │
 ├── api
@@ -292,6 +299,18 @@ make compose-reset
 ```
 
 `compose-reset` удаляет named volume `postgres_data`, поэтому использовать эту команду следует только для полного сброса локальной базы данных.
+
+## Continuous Integration
+
+GitHub Actions автоматически проверяет проект при `push` и в pull requests:
+
+- форматирование, `go mod tidy`, `go vet` и unit tests с race detector;
+- сборку полного Docker Compose-стенда, smoke- и E2E-тесты;
+- Kustomize render и server-side validation во временном Kind-кластере.
+
+Полный Kubernetes smoke/E2E запускается вручную через `workflow_dispatch`, чтобы не поднимать тяжёлый stateful-стенд на каждом коммите.
+
+Подробности: [docs/ci.md](docs/ci.md).
 
 ## Roadmap
 
@@ -1063,15 +1082,10 @@ E2E_TIMEOUT_SECONDS=180 make e2e-observability-test
 
 ```text
 MVP 10 — Kubernetes Deployment — завершён
+Post-MVP10 — GitHub Actions CI — завершён
 ```
 
-Следующий необязательный этап:
-
-```text
-GitHub Actions CI — unit tests, static checks, Docker build и проверка Kustomize
-```
-
-CI следует реализовывать отдельным коммитом: он автоматизирует проверку уже завершённого MVP10, но не входит в локальный Kubernetes deployment.
+CI автоматически проверяет Go-код, Docker Compose smoke/E2E и Kubernetes-манифесты. Полный Kubernetes E2E доступен как ручной workflow run.
 
 ## License
 
